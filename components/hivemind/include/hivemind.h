@@ -32,7 +32,8 @@ typedef struct {
     const char *access_key;   /**< Auth access key. */
     const char *password;     /**< Handshake password for key derivation. */
     const char *site_id;      /**< Site identifier (e.g. "esp32-kitchen"). */
-    hm_cipher_t preferred_cipher;  /**< Preferred cipher for negotiation. */
+    hm_cipher_t preferred_cipher;    /**< Preferred cipher for negotiation. */
+    hm_encoding_t preferred_encoding; /**< Preferred encoding for negotiation (default HM_ENCODING_JSON_HEX). */
     uint32_t reconnect_ms;    /**< Auto-reconnect delay in ms (0 = disabled, default 5000). */
 } hm_config_t;
 

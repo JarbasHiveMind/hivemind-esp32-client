@@ -43,7 +43,8 @@ typedef struct {
 
     /* Negotiated settings */
     bool binarize;
-    hm_cipher_t preferred_cipher;  /**< Client preference, sent in SHAKE. */
+    hm_cipher_t preferred_cipher;    /**< Client preference, sent in SHAKE. */
+    hm_encoding_t preferred_encoding; /**< Client preference, sent in SHAKE. */
 
     /* Config */
     const char *password;

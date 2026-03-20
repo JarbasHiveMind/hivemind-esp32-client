@@ -117,6 +117,7 @@ void hm_protocol_init(hm_protocol_ctx_t *ctx, const char *password,
     ctx->password = password;
     ctx->site_id = site_id;
     ctx->preferred_cipher = preferred_cipher;
+    ctx->preferred_encoding = HM_ENCODING_JSON_HEX;
     ctx->binarize = false;
     ctx->state = HM_STATE_CONNECTING;
     generate_uuid_v4(ctx->session_id);
@@ -191,9 +192,9 @@ esp_err_t hm_protocol_build_encrypted_hello(hm_protocol_ctx_t *ctx,
     }
 
     /* Encrypt */
-    err = hm_crypto_encrypt_json_hex(&ctx->crypto,
-                                      (const uint8_t *)envelope, strlen(envelope),
-                                      out, out_sz);
+    err = hm_crypto_encrypt_json(&ctx->crypto,
+                                  (const uint8_t *)envelope, strlen(envelope),
+                                  ctx->crypto.encoding, out, out_sz);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to encrypt HELLO");
         return err;
@@ -219,9 +220,9 @@ esp_err_t hm_protocol_encrypt_message(hm_protocol_ctx_t *ctx,
         return err;
     }
 
-    return hm_crypto_encrypt_json_hex(&ctx->crypto,
-                                       (const uint8_t *)envelope, strlen(envelope),
-                                       out, out_sz);
+    return hm_crypto_encrypt_json(&ctx->crypto,
+                                   (const uint8_t *)envelope, strlen(envelope),
+                                   ctx->crypto.encoding, out, out_sz);
 }
 
 esp_err_t hm_protocol_decrypt_message(hm_protocol_ctx_t *ctx,
@@ -238,8 +239,9 @@ esp_err_t hm_protocol_decrypt_message(hm_protocol_ctx_t *ctx,
     /* Decrypt */
     uint8_t pt_buf[4096];
     size_t pt_len = 0;
-    esp_err_t err = hm_crypto_decrypt_json_hex(&ctx->crypto, encrypted,
-                                                pt_buf, sizeof(pt_buf) - 1, &pt_len);
+    esp_err_t err = hm_crypto_decrypt_json(&ctx->crypto, encrypted,
+                                            ctx->crypto.encoding,
+                                            pt_buf, sizeof(pt_buf) - 1, &pt_len);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Decryption failed");
         return err;
@@ -360,7 +362,7 @@ static esp_err_t handle_shake_request(hm_protocol_ctx_t *ctx, const cJSON *paylo
     cJSON_AddBoolToObject(resp_payload, "binarize", false);
 
     cJSON *encodings = cJSON_AddArrayToObject(resp_payload, "encodings");
-    cJSON_AddItemToArray(encodings, cJSON_CreateString("JSON-HEX"));
+    cJSON_AddItemToArray(encodings, cJSON_CreateString(hm_encoding_name(ctx->preferred_encoding)));
 
     cJSON *ciphers = cJSON_AddArrayToObject(resp_payload, "ciphers");
     cJSON_AddItemToArray(ciphers, cJSON_CreateString(hm_crypto_cipher_name(ctx->preferred_cipher)));
@@ -426,8 +428,23 @@ static esp_err_t handle_shake_response(hm_protocol_ctx_t *ctx, const cJSON *payl
         ctx->crypto.cipher = ctx->preferred_cipher;
     }
 
+    /* Set negotiated encoding */
+    const cJSON *enc_item = cJSON_GetObjectItemCaseSensitive(payload, "encoding");
+    if (cJSON_IsString(enc_item) && enc_item->valuestring) {
+        hm_encoding_t server_enc;
+        if (hm_encoding_parse(enc_item->valuestring, &server_enc) == ESP_OK) {
+            ctx->crypto.encoding = server_enc;
+        } else {
+            ctx->crypto.encoding = ctx->preferred_encoding;
+        }
+    } else {
+        ctx->crypto.encoding = ctx->preferred_encoding;
+    }
+
     ctx->state = HM_STATE_KEY_DERIVED;
-    ESP_LOGI(TAG, "Key derived, cipher=%s", hm_crypto_cipher_name(ctx->crypto.cipher));
+    ESP_LOGI(TAG, "Key derived, cipher=%s, encoding=%s",
+             hm_crypto_cipher_name(ctx->crypto.cipher),
+             hm_encoding_name(ctx->crypto.encoding));
 
     /* Build encrypted HELLO */
     char *hello_buf = (char *)malloc(4096);
