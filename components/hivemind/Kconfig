@@ -1,0 +1,15 @@
+menu "HiveMind Client"
+
+    config HIVEMIND_WS_BUFFER_SIZE
+        int "WebSocket receive buffer size (bytes)"
+        default 8192
+
+    config HIVEMIND_RECONNECT_MS
+        int "Auto-reconnect delay (ms), 0 = disabled"
+        default 5000
+
+    config HIVEMIND_LOG_LEVEL
+        int "Log level (0=NONE, 1=ERROR, 2=WARN, 3=INFO, 4=DEBUG, 5=VERBOSE)"
+        default 3
+
+endmenu
