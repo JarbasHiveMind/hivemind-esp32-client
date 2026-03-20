@@ -1,0 +1,28 @@
+name: Tests
+
+on:
+  push:
+    branches: [ master, dev, main ]
+  pull_request:
+    branches: [ master, dev, main ]
+
+jobs:
+  c-host-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libmbedtls-dev cmake build-essential
+
+    - name: Build host tests
+      run: |
+        cmake -B build test_host/
+        cmake --build build
+
+    - name: Run host tests
+      run: |
+        ./build/test_host_runner
