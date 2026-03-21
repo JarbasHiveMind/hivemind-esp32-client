@@ -56,6 +56,7 @@ void led_set_state(sat_state_t state)
         case SAT_IDLE:          r = 16; g = 16; b = 16; break;  /* Dim white */
         case SAT_WAKE_DETECTED: r = 0;  g = 60; b = 60; break;  /* Cyan */
         case SAT_LISTENING:     r = 0;  g = 0;  b = 80; break;  /* Blue */
+        case SAT_THINKING:      r = 60; g = 0;  b = 60; break;  /* Purple */
         case SAT_SPEAKING:      r = 0;  g = 80; b = 0;  break;  /* Green */
         case SAT_ERROR:         r = 80; g = 0;  b = 0;  break;  /* Red */
         case SAT_MUTED:         r = 80; g = 40; b = 0;  break;  /* Orange */

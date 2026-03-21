@@ -7,6 +7,8 @@ idf_component_register(
         "led_ring.c"
         "button.c"
         "speech_detect.c"
+        "vad_simple.c"
+        "ovos_http.c"
     INCLUDE_DIRS "."
     REQUIRES
         hivemind
@@ -14,6 +16,7 @@ idf_component_register(
         esp_driver_i2s
         led_strip
         esp-sr
+        esp_http_client
         nvs_flash
         esp_event
         esp_netif

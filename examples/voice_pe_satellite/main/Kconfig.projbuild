@@ -1,21 +1,100 @@
 menu "HiveMind Voice PE Satellite"
 
-    config EXAMPLE_HIVEMIND_HOST
-        string "HiveMind hub hostname or IP"
-        default "192.168.1.100"
-        help
-            Hostname or IP address of the HiveMind hub.
+    menu "Listening Mode (VAD / Wake Word)"
+        choice EXAMPLE_LISTEN_MODE
+            prompt "How the device decides when to listen"
+            default EXAMPLE_LISTEN_WAKE_WORD
 
-    config EXAMPLE_HIVEMIND_KEY
-        string "HiveMind access key"
-        default ""
-        help
-            Access key for authenticating with the HiveMind hub.
+            config EXAMPLE_LISTEN_VAD_ONLY
+                bool "VAD only (wake word on hub)"
+                help
+                    Streams raw audio whenever speech detected. Hub handles wake word.
+                    Lightest on-device processing. Mirrors hivemind-mic-satellite.
 
-    config EXAMPLE_HIVEMIND_PASSWORD
-        string "HiveMind password"
-        default ""
-        help
-            Password for session key derivation (PBKDF2).
+            config EXAMPLE_LISTEN_WAKE_WORD
+                bool "Wake word + VAD on device (ESP-SR)"
+                help
+                    Listens for "hi_esp" wake word on device, then records until silence.
+                    Requires ESP-SR. Mirrors HiveMind-voice-relay.
+        endchoice
+    endmenu
+
+    menu "STT Transport"
+        choice EXAMPLE_STT_MODE
+            prompt "How speech audio reaches the STT engine"
+            default EXAMPLE_STT_HM_BINARY
+
+            config EXAMPLE_STT_HM_BINARY
+                bool "HiveMind binary (stream raw audio chunks to hub)"
+                help
+                    Stream PCM chunks via HM_BIN_RAW_AUDIO / HM_BIN_STT_HANDLE.
+                    Hub runs STT on the audio stream. Lowest latency.
+
+            config EXAMPLE_STT_HM_B64
+                bool "HiveMind base64 (batch WAV to hub)"
+                help
+                    Record entire utterance, base64-encode as WAV, send via
+                    recognizer_loop:b64_transcribe bus message.
+
+            config EXAMPLE_STT_HTTP
+                bool "OVOS HTTP server (POST WAV to STT server)"
+                help
+                    POST audio to an OVOS STT HTTP server on the local network.
+                    Device handles STT request/response directly.
+        endchoice
+
+        config EXAMPLE_OVOS_STT_URL
+            string "OVOS STT server URL"
+            default "http://192.168.1.100:8080/stt"
+            depends on EXAMPLE_STT_HTTP
+            help
+                URL of the OVOS STT HTTP server (POST audio/wav → text/plain).
+    endmenu
+
+    menu "TTS Transport"
+        choice EXAMPLE_TTS_MODE
+            prompt "How TTS audio is obtained"
+            default EXAMPLE_TTS_HM_BINARY
+
+            config EXAMPLE_TTS_HM_BINARY
+                bool "HiveMind binary (hub pushes audio chunks)"
+                help
+                    Hub sends TTS audio as HM_BIN_TTS_AUDIO binary frames.
+                    Default. Works with all hub configurations.
+
+            config EXAMPLE_TTS_HM_B64
+                bool "HiveMind base64 (request/response via bus)"
+                help
+                    Request via speak:b64_audio bus message, receive
+                    speak:b64_audio.response with base64-encoded WAV.
+
+            config EXAMPLE_TTS_HTTP
+                bool "OVOS HTTP server (GET from TTS server)"
+                help
+                    Fetch synthesized audio from an OVOS TTS HTTP server
+                    on the local network. Device handles TTS directly.
+        endchoice
+
+        config EXAMPLE_OVOS_TTS_URL
+            string "OVOS TTS server URL"
+            default "http://192.168.1.100:9666/tts"
+            depends on EXAMPLE_TTS_HTTP
+            help
+                URL of the OVOS TTS HTTP server (GET ?utterance=X&lang=Y → audio/wav).
+    endmenu
+
+    menu "HiveMind Connection"
+        config EXAMPLE_HIVEMIND_HOST
+            string "HiveMind hub hostname or IP"
+            default "192.168.1.100"
+
+        config EXAMPLE_HIVEMIND_KEY
+            string "HiveMind access key"
+            default ""
+
+        config EXAMPLE_HIVEMIND_PASSWORD
+            string "HiveMind password"
+            default ""
+    endmenu
 
 endmenu
