@@ -21,7 +21,11 @@ CONFIG_MBEDTLS_GCM_C=y
 # HiveMind WebSocket buffer (larger for TTS audio chunks)
 CONFIG_HIVEMIND_WS_BUFFER_SIZE=16384
 
-# Stack sizes
+# ESP-SR model storage in flash
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Stack sizes (ESP-SR AFE needs larger stacks)
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 
 # WiFi

@@ -53,11 +53,12 @@ void led_set_state(sat_state_t state)
     uint8_t r = 0, g = 0, b = 0;
 
     switch (state) {
-        case SAT_IDLE:      r = 16; g = 16; b = 16; break;  /* Dim white */
-        case SAT_LISTENING: r = 0;  g = 0;  b = 80; break;  /* Blue */
-        case SAT_SPEAKING:  r = 0;  g = 80; b = 0;  break;  /* Green */
-        case SAT_ERROR:     r = 80; g = 0;  b = 0;  break;  /* Red */
-        case SAT_MUTED:     r = 80; g = 40; b = 0;  break;  /* Orange */
+        case SAT_IDLE:          r = 16; g = 16; b = 16; break;  /* Dim white */
+        case SAT_WAKE_DETECTED: r = 0;  g = 60; b = 60; break;  /* Cyan */
+        case SAT_LISTENING:     r = 0;  g = 0;  b = 80; break;  /* Blue */
+        case SAT_SPEAKING:      r = 0;  g = 80; b = 0;  break;  /* Green */
+        case SAT_ERROR:         r = 80; g = 0;  b = 0;  break;  /* Red */
+        case SAT_MUTED:         r = 80; g = 40; b = 0;  break;  /* Orange */
     }
 
     for (int i = 0; i < VP_LED_COUNT; i++) {

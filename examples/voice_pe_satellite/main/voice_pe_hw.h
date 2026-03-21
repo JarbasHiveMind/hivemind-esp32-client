@@ -55,13 +55,14 @@
 #define VP_DIAL_A            16
 #define VP_DIAL_B            18
 
-/* ── Satellite state (drives LEDs + audio capture logic) ─────────── */
+/* ── Satellite state (drives LEDs + audio pipeline logic) ────────── */
 typedef enum {
-    SAT_IDLE,       /* Connected, waiting for user. Dim white LEDs. */
-    SAT_LISTENING,  /* Button pressed, streaming mic audio. Blue LEDs. */
-    SAT_SPEAKING,   /* Playing TTS response. Green LEDs. */
-    SAT_ERROR,      /* Connection error / init failure. Red LEDs. */
-    SAT_MUTED,      /* Hardware mute switch active. Orange LEDs. */
+    SAT_IDLE,           /* Connected, listening for wake word. Dim white LEDs. */
+    SAT_WAKE_DETECTED,  /* Wake word heard, waiting for speech. Cyan LEDs. */
+    SAT_LISTENING,      /* Streaming mic audio to hub (VAD active). Blue LEDs. */
+    SAT_SPEAKING,       /* Playing TTS response. Green LEDs. */
+    SAT_ERROR,          /* Connection error / init failure. Red LEDs. */
+    SAT_MUTED,          /* Hardware mute switch active. Orange LEDs. */
 } sat_state_t;
 
 #endif /* VOICE_PE_HW_H */

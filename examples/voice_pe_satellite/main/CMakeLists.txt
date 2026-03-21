@@ -6,12 +6,14 @@ idf_component_register(
         "i2s_spk.c"
         "led_ring.c"
         "button.c"
+        "speech_detect.c"
     INCLUDE_DIRS "."
     REQUIRES
         hivemind
         driver
         esp_driver_i2s
         led_strip
+        esp-sr
         nvs_flash
         esp_event
         esp_netif
