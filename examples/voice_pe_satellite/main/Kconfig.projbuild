@@ -1,0 +1,21 @@
+menu "HiveMind Voice PE Satellite"
+
+    config EXAMPLE_HIVEMIND_HOST
+        string "HiveMind hub hostname or IP"
+        default "192.168.1.100"
+        help
+            Hostname or IP address of the HiveMind hub.
+
+    config EXAMPLE_HIVEMIND_KEY
+        string "HiveMind access key"
+        default ""
+        help
+            Access key for authenticating with the HiveMind hub.
+
+    config EXAMPLE_HIVEMIND_PASSWORD
+        string "HiveMind password"
+        default ""
+        help
+            Password for session key derivation (PBKDF2).
+
+endmenu

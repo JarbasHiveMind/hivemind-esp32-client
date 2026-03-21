@@ -1,0 +1,19 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "codec_init.c"
+        "i2s_mic.c"
+        "i2s_spk.c"
+        "led_ring.c"
+        "button.c"
+    INCLUDE_DIRS "."
+    REQUIRES
+        hivemind
+        driver
+        esp_driver_i2s
+        led_strip
+        nvs_flash
+        esp_event
+        esp_netif
+        protocol_examples_common
+)
