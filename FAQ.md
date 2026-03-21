@@ -39,5 +39,14 @@ A: Set STT and/or TTS transport to "OVOS HTTP" in menuconfig, then configure the
 **Q: Can I use a custom wake word instead of "hi_esp"?**
 A: Change `cfg.wakenet_model_name` in `speech_detect.c`. Built-in options include "hi_esp", "alexa", "hi_lexin". Custom wake words require Espressif's model training service.
 
+**Q: Does the ESP32 client handle PING flood discovery?**
+A: The ESP32 client does not initiate PING floods. It receives `PROPAGATE(PING)` from the hub and can respond with its own PING (same `flood_id`). PONG has been removed from the protocol — discovery is PING-only.
+
+**Q: How do I run the Voice PE unit tests?**
+A: `cd test_host && mkdir build && cd build && cmake .. && make && ./test_host_runner`. Tests VAD, WAV headers, crypto, binary codec, and protocol FSM. 60 tests total, runs on host (no ESP32 needed).
+
+**Q: Are there E2E protocol tests for Voice PE message flows?**
+A: Yes, in `hivemind-test-harness/tests/test_voice_pe_protocol.py`. 18 tests covering STT binary/base64, TTS binary/base64, lifecycle messages, speak:synth, and full VAD/relay mode flows. Run with `uv run pytest tests/test_voice_pe_protocol.py`.
+
 **Q: What's the difference between HM binary and HM base64 STT?**
 A: Binary streams raw PCM chunks in real-time (`HM_BIN_RAW_AUDIO`) — lowest latency. Base64 records the entire utterance, wraps as WAV, and sends via `recognizer_loop:b64_transcribe` — higher latency but simpler hub-side processing.
