@@ -6,9 +6,11 @@ idf_component_register(
         "i2s_spk.c"
         "led_ring.c"
         "button.c"
+        "rotary.c"
         "speech_detect.c"
         "vad_simple.c"
         "ovos_http.c"
+        "audio_util.c"
     INCLUDE_DIRS "."
     REQUIRES
         hivemind

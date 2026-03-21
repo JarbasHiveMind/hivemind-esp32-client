@@ -40,7 +40,7 @@ A: Set STT and/or TTS transport to "OVOS HTTP" in menuconfig, then configure the
 A: Change `cfg.wakenet_model_name` in `speech_detect.c`. Built-in options include "hi_esp", "alexa", "hi_lexin". Custom wake words require Espressif's model training service.
 
 **Q: Does the ESP32 client handle PING flood discovery?**
-A: The ESP32 client does not initiate PING floods. It receives `PROPAGATE(PING)` from the hub and can respond with its own PING (same `flood_id`). PONG has been removed from the protocol — discovery is PING-only.
+A: The ESP32 client does not initiate PING floods. It receives `PROPAGATE(PING)` from the hub and responds with its own PING (same `flood_id`).
 
 **Q: How do I run the Voice PE unit tests?**
 A: `cd test_host && mkdir build && cd build && cmake .. && make && ./test_host_runner`. Tests VAD, WAV headers, crypto, binary codec, and protocol FSM. 60 tests total, runs on host (no ESP32 needed).

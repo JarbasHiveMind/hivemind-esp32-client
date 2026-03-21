@@ -72,6 +72,17 @@ void test_wav_106(void);  /* wav find_data rejects non-WAV */
 void test_wav_116(void);  /* wav find_data rejects too-short buffer */
 void test_wav_124(void);  /* wav roundtrip build then parse */
 
+/* test_audio_util.c — TEST_FILE_ID=autil */
+void test_autil_31(void);   /* audio_is_wav detects RIFF header */
+void test_autil_38(void);   /* audio_is_wav rejects non-WAV */
+void test_autil_45(void);   /* audio_is_wav rejects short buffer */
+void test_autil_51(void);   /* audio_wav_extract_pcm finds data */
+void test_autil_72(void);   /* audio_wav_extract_pcm rejects non-WAV */
+void test_autil_81(void);   /* audio_apply_volume full volume is identity */
+void test_autil_90(void);   /* audio_apply_volume zero volume is silence */
+void test_autil_99(void);   /* audio_apply_volume 50 percent halves amplitude */
+void test_autil_108(void);  /* audio_apply_volume small volume */
+
 /* test_crypto.c — TEST_FILE_ID=crypto */
 void test_crypto_18(void);   /* hsub generation */
 void test_crypto_28(void);   /* hsub IV extraction */
@@ -140,6 +151,17 @@ int main(void)
     RUN_TEST(test_wav_106);
     RUN_TEST(test_wav_116);
     RUN_TEST(test_wav_124);
+
+    /* Audio util tests */
+    RUN_TEST(test_autil_31);
+    RUN_TEST(test_autil_38);
+    RUN_TEST(test_autil_45);
+    RUN_TEST(test_autil_51);
+    RUN_TEST(test_autil_72);
+    RUN_TEST(test_autil_81);
+    RUN_TEST(test_autil_90);
+    RUN_TEST(test_autil_99);
+    RUN_TEST(test_autil_108);
 
     /* Protocol tests */
     RUN_TEST(test_proto_14);

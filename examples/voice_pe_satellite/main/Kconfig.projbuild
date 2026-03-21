@@ -97,4 +97,11 @@ menu "HiveMind Voice PE Satellite"
             default ""
     endmenu
 
+    config EXAMPLE_LANGUAGE
+        string "Language code (BCP-47)"
+        default "en-us"
+        help
+            Language for STT/TTS (e.g., "en-us", "pt-br", "de-de", "es-es").
+            Used in recognizer_loop messages and OVOS HTTP requests.
+
 endmenu

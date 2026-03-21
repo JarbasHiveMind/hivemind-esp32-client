@@ -77,10 +77,12 @@ add_executable(test_host_runner
     ../test/test_protocol.c
     ../test/test_vad_simple.c
     ../test/test_wav_header.c
+    ../test/test_audio_util.c
     ../components/hivemind/src/hivemind_crypto.c
     ../components/hivemind/src/hivemind_binary.c
     ../components/hivemind/src/hivemind_protocol.c
     ../examples/voice_pe_satellite/main/vad_simple.c
+    ../examples/voice_pe_satellite/main/audio_util.c
     ${unity_SOURCE_DIR}/src/unity.c
     ${cjson_SOURCE_DIR}/cJSON.c
 )
@@ -137,6 +139,9 @@ set_source_files_properties(../test/test_vad_simple.c PROPERTIES
 )
 set_source_files_properties(../test/test_wav_header.c PROPERTIES
     COMPILE_DEFINITIONS "TEST_FILE_ID=wav"
+)
+set_source_files_properties(../test/test_audio_util.c PROPERTIES
+    COMPILE_DEFINITIONS "TEST_FILE_ID=autil"
 )
 
 # ================================================================

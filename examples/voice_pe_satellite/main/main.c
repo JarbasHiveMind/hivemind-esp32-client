@@ -39,15 +39,24 @@
 #include "i2s_spk.h"
 #include "led_ring.h"
 #include "button.h"
+#include "rotary.h"
 #include "speech_detect.h"
 #include "vad_simple.h"
 #include "ovos_http.h"
+#include "audio_util.h"
 
 static const char *TAG = "voice_pe";
 
 static hm_client_t *s_client = NULL;
 static volatile sat_state_t s_state = SAT_IDLE;
 static volatile bool s_streaming = false;
+
+/* Language from menuconfig (default "en-us"). */
+#ifdef CONFIG_EXAMPLE_LANGUAGE
+static const char *s_lang = CONFIG_EXAMPLE_LANGUAGE;
+#else
+static const char *s_lang = "en-us";
+#endif
 
 /* ── Build-time config ───────────────────────────────────────────── */
 
@@ -133,10 +142,18 @@ static void decode_b64_wav_to_speaker(const char *b64_str)
 
     mbedtls_base64_decode(wav, wav_len, &wav_len,
                            (const unsigned char *)b64_str, b64_len);
-    if (wav_len > 44) {
+
+    const int16_t *pcm;
+    size_t samples;
+    if (audio_wav_extract_pcm(wav, wav_len, &pcm, &samples, NULL, NULL)) {
         s_state = SAT_SPEAKING;
-        i2s_spk_push((const int16_t *)(wav + 44),
-                      (wav_len - 44) / sizeof(int16_t));
+        int16_t *buf = malloc(samples * sizeof(int16_t));
+        if (buf) {
+            memcpy(buf, pcm, samples * sizeof(int16_t));
+            audio_apply_volume(buf, samples, rotary_get_volume());
+            i2s_spk_push(buf, samples);
+            free(buf);
+        }
     }
     free(wav);
 }
@@ -155,7 +172,7 @@ static void submit_stt_recording(void)
         if (b64) {
             cJSON *data = cJSON_CreateObject();
             cJSON_AddStringToObject(data, "audio", b64);
-            cJSON_AddStringToObject(data, "lang", "en-us");
+            cJSON_AddStringToObject(data, "lang", s_lang);
             hm_send_bus_message(s_client, "recognizer_loop:b64_transcribe",
                                  data, NULL);
             cJSON_Delete(data);
@@ -163,14 +180,14 @@ static void submit_stt_recording(void)
         }
     } else if (s_stt == STT_HTTP) {
         char transcript[512] = "";
-        if (ovos_http_stt(s_rec_buf, s_rec_count, "en-us",
+        if (ovos_http_stt(s_rec_buf, s_rec_count, s_lang,
                            transcript, sizeof(transcript)) == ESP_OK &&
             transcript[0] != '\0') {
             cJSON *utt_data = cJSON_CreateObject();
             cJSON *arr = cJSON_CreateArray();
             cJSON_AddItemToArray(arr, cJSON_CreateString(transcript));
             cJSON_AddItemToObject(utt_data, "utterances", arr);
-            cJSON_AddStringToObject(utt_data, "lang", "en-us");
+            cJSON_AddStringToObject(utt_data, "lang", s_lang);
             hm_send_bus_message(s_client, "recognizer_loop:utterance",
                                  utt_data, NULL);
             cJSON_Delete(utt_data);
@@ -198,8 +215,9 @@ static void request_tts(const char *utterance)
         int16_t *tts_buf = malloc(16000 * 30 * sizeof(int16_t));
         if (tts_buf) {
             size_t tts_samples = 0;
-            if (ovos_http_tts(utterance, "en-us", tts_buf, 16000 * 30,
+            if (ovos_http_tts(utterance, s_lang, tts_buf, 16000 * 30,
                                &tts_samples) == ESP_OK && tts_samples > 0) {
+                audio_apply_volume(tts_buf, tts_samples, rotary_get_volume());
                 i2s_spk_push(tts_buf, tts_samples);
             } else {
                 s_state = SAT_IDLE;
@@ -252,7 +270,7 @@ static void on_bus_message(hm_client_t *client, const char *type,
                     cJSON *arr = cJSON_CreateArray();
                     cJSON_AddItemToArray(arr, cJSON_CreateString(text->valuestring));
                     cJSON_AddItemToObject(utt_data, "utterances", arr);
-                    cJSON_AddStringToObject(utt_data, "lang", "en-us");
+                    cJSON_AddStringToObject(utt_data, "lang", s_lang);
                     hm_send_bus_message(client, "recognizer_loop:utterance",
                                          utt_data, NULL);
                     cJSON_Delete(utt_data);
@@ -283,22 +301,60 @@ static void on_binary(hm_client_t *client, hm_bin_type_t bin_type,
     if (bin_type == HM_BIN_TTS_AUDIO && s_tts == TTS_HM_BINARY) {
         ESP_LOGD(TAG, "TTS binary: %zu bytes", len);
         s_state = SAT_SPEAKING;
-        i2s_spk_push((const int16_t *)data, len / sizeof(int16_t));
+
+        const int16_t *pcm;
+        size_t samples;
+
+        if (audio_is_wav(data, len)) {
+            /* WAV-wrapped PCM — extract data chunk. */
+            uint32_t sr = 0;
+            if (audio_wav_extract_pcm(data, len, &pcm, &samples, &sr, NULL)) {
+                /* Copy to mutable buffer for volume scaling. */
+                int16_t *buf = malloc(samples * sizeof(int16_t));
+                if (buf) {
+                    memcpy(buf, pcm, samples * sizeof(int16_t));
+                    audio_apply_volume(buf, samples, rotary_get_volume());
+                    i2s_spk_push(buf, samples);
+                    free(buf);
+                }
+            }
+        } else {
+            /* Raw PCM — assume 16-bit mono. */
+            samples = len / sizeof(int16_t);
+            int16_t *buf = malloc(samples * sizeof(int16_t));
+            if (buf) {
+                memcpy(buf, data, len);
+                audio_apply_volume(buf, samples, rotary_get_volume());
+                i2s_spk_push(buf, samples);
+                free(buf);
+            }
+        }
     }
 }
 
 static void on_state_change(hm_client_t *client, hm_state_t state)
 {
     ESP_LOGI(TAG, "HiveMind state: %d", state);
+
     if (state == HM_STATE_READY) {
+        /* Connection (re)established — reset pipeline state. */
+        s_streaming = false;
+        s_rec_count = 0;
         s_state = SAT_IDLE;
-        ESP_LOGI(TAG, "Connected — listen=%s stt=%s tts=%s",
+        ESP_LOGI(TAG, "Connected — listen=%s stt=%s tts=%s lang=%s",
                  s_listen == LISTEN_VAD_ONLY ? "vad" : "wakeword",
                  s_stt == STT_HM_BINARY ? "hm-bin" :
                  s_stt == STT_HM_B64    ? "hm-b64" : "http",
                  s_tts == TTS_HM_BINARY ? "hm-bin" :
-                 s_tts == TTS_HM_B64    ? "hm-b64" : "http");
+                 s_tts == TTS_HM_B64    ? "hm-b64" : "http",
+                 s_lang);
     } else if (state == HM_STATE_DISCONNECTED) {
+        /* Connection lost — stop any in-progress session cleanly.
+         * Audio tasks check s_state and will pause on their own.
+         * Recording buffer is discarded (partial audio is useless). */
+        ESP_LOGW(TAG, "Disconnected from hub — will auto-reconnect");
+        s_streaming = false;
+        s_rec_count = 0;
         s_state = SAT_ERROR;
     }
 }
@@ -506,6 +562,12 @@ static void ui_task(void *arg)
         }
         if (btn_listening && !s_streaming) btn_listening = false;
 
+        /* Volume change — log it (LED volume display could be added). */
+        uint8_t vol;
+        if (rotary_volume_changed(&vol)) {
+            ESP_LOGI(TAG, "Volume: %d%%", vol);
+        }
+
         if (s_state == SAT_SPEAKING && i2s_spk_is_idle()) {
             s_state = SAT_IDLE;
         }
@@ -537,6 +599,7 @@ void app_main(void)
     ESP_ERROR_CHECK(i2s_spk_init());
     ESP_ERROR_CHECK(led_ring_init());
     ESP_ERROR_CHECK(button_init());
+    ESP_ERROR_CHECK(rotary_init());
 
     /* Wake word mode requires ESP-SR. */
     if (s_listen == LISTEN_WAKE_WORD) {
