@@ -27,11 +27,17 @@ A: Yes. The `examples/voice_pe_satellite/` example targets the Voice PE board (E
 **Q: What sample rate conversion does the Voice PE speaker use?**
 A: TTS arrives as 16 kHz 16-bit mono. The speaker driver triplicates each sample to reach 48 kHz, zero-extends to 32-bit, and duplicates to stereo for the AIC3204 DAC. Adequate for speech; not suitable for music.
 
-**Q: Does the Voice PE example support wake word detection?**
-A: Yes. It uses ESP-SR's WakeNet9 with the "hi_esp" wake word. Say "Hi ESP" to start a voice session. VAD automatically detects when you stop speaking. The center button also works as manual push-to-talk override.
+**Q: What modes does the Voice PE satellite support?**
+A: Three independent axes configured via `idf.py menuconfig`: (1) Listening: VAD-only or ESP-SR wake word. (2) STT: HiveMind binary streaming, HiveMind base64 batch, or OVOS HTTP server. (3) TTS: HiveMind binary, HiveMind base64, or OVOS HTTP server. Any combination works.
 
-**Q: What ESP-SR components does the Voice PE example use?**
-A: Audio Front-End (AFE) with WakeNet9 (wake word) and VADNet (voice activity detection). AEC is disabled because the XMOS Voice Kit handles echo cancellation in hardware. Dependency: `espressif/esp-sr ^1.3.0`.
+**Q: Does the Voice PE example support wake word detection?**
+A: Yes, in wake word mode. Uses ESP-SR WakeNet9 "hi_esp". In VAD-only mode, wake word is handled by the hub. Center button works as manual push-to-talk in both modes.
+
+**Q: How do I use OVOS STT/TTS HTTP servers?**
+A: Set STT and/or TTS transport to "OVOS HTTP" in menuconfig, then configure the server URLs. STT: `POST /stt` with `audio/wav` body. TTS: `GET /tts?utterance=X&lang=Y`. See `ovos_http.c`.
 
 **Q: Can I use a custom wake word instead of "hi_esp"?**
 A: Change `cfg.wakenet_model_name` in `speech_detect.c`. Built-in options include "hi_esp", "alexa", "hi_lexin". Custom wake words require Espressif's model training service.
+
+**Q: What's the difference between HM binary and HM base64 STT?**
+A: Binary streams raw PCM chunks in real-time (`HM_BIN_RAW_AUDIO`) — lowest latency. Base64 records the entire utterance, wraps as WAV, and sends via `recognizer_loop:b64_transcribe` — higher latency but simpler hub-side processing.

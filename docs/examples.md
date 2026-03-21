@@ -126,41 +126,67 @@ cJSON_Delete(data);
 
 ## 5. Voice PE Satellite (Full Hardware Satellite)
 
-Full-featured satellite for the **Home Assistant Voice Preview Edition** board (ESP32-S3). On-device wake word + VAD with TTS playback and LED state feedback.
+Configurable satellite for the **Home Assistant Voice Preview Edition** board (ESP32-S3). Three independent configuration axes via `idf.py menuconfig`.
 
 **Hardware**: XMOS Voice Kit (mic) + TI AIC3204 (speaker) + 12x WS2812 LED ring + center button + mute switch.
 
-**Audio pipeline**: I2S mic → ESP-SR AFE (WakeNet9 "hi_esp" + VAD) → HiveMind STT streaming → hub → TTS playback.
-
 **Source**: `examples/voice_pe_satellite/`
 
-**Key files**:
-- `main.c` — audio pipeline task, HiveMind callbacks, UI task
+### Configuration Axes
+
+**Listening mode** (how the device decides when to listen):
+
+| Mode | On Device | On Hub | Mirrors |
+|------|-----------|--------|---------|
+| VAD only | Energy-based VAD | Wake word + STT + TTS | `hivemind-mic-satellite` |
+| Wake word | ESP-SR WakeNet "hi_esp" + VAD | STT + TTS | `HiveMind-voice-relay` |
+
+**STT transport** (how speech audio reaches the STT engine):
+
+| Mode | Protocol | Latency |
+|------|----------|---------|
+| HM binary | Stream PCM chunks (`HM_BIN_RAW_AUDIO`) | Lowest (streaming) |
+| HM base64 | Batch WAV via `recognizer_loop:b64_transcribe` | Medium (after silence) |
+| OVOS HTTP | POST WAV to OVOS STT server | Medium (after silence) |
+
+**TTS transport** (how synthesized audio is obtained):
+
+| Mode | Protocol |
+|------|----------|
+| HM binary | Hub pushes `HM_BIN_TTS_AUDIO` chunks |
+| HM base64 | Request/response via `speak:b64_audio` bus messages |
+| OVOS HTTP | GET from OVOS TTS server |
+
+### Key Files
+- `main.c` — mode dispatch, HiveMind callbacks, two task variants (VAD-only / wake word)
 - `speech_detect.c/h` — ESP-SR AFE wrapper (WakeNet + VAD)
-- `voice_pe_hw.h` — all pin definitions for Voice PE board
+- `vad_simple.c/h` — energy-based VAD for mic-satellite mode
+- `ovos_http.c/h` — OVOS STT/TTS HTTP client
+- `voice_pe_hw.h` — pin definitions + all mode/state enums
 - `codec_init.c` — I2C bus, XMOS reset, AIC3204 DAC register sequence
-- `i2s_mic.c` — 32-bit stereo input → 16-bit mono extraction
-- `i2s_spk.c` — ring buffer + 16 kHz→48 kHz upsample + 32-bit stereo output
-- `led_ring.c` — 6-state solid colors (idle/wake-detected/listening/speaking/error/muted)
-- `button.c` — GPIO0 ISR debounce (manual override) + GPIO3 mute polling
+- `i2s_mic.c` — 32-bit stereo → 16-bit mono extraction
+- `i2s_spk.c` — ring buffer + 16k→48k upsample + stereo output
+- `led_ring.c` — 7-state solid colors
+- `button.c` — GPIO0 push-to-talk override + GPIO3 mute
 
-**States**:
+### LED States
 
-| State | Trigger | LEDs | Audio |
-|-------|---------|------|-------|
-| IDLE | Default | Dim white | WakeNet listening |
-| WAKE_DETECTED | "hi_esp" heard | Cyan | STT session starts |
-| LISTENING | Speech detected | Blue | Streaming to hub |
-| SPEAKING | TTS received | Green | Playing response |
-| MUTED | Mute switch | Orange | All mic processing off |
-| ERROR | Disconnected | Red | — |
+| State | Color | Meaning |
+|-------|-------|---------|
+| IDLE | Dim white | Listening for wake word / VAD |
+| WAKE_DETECTED | Cyan | Wake word heard |
+| LISTENING | Blue | Streaming audio |
+| THINKING | Purple | Waiting for STT / hub response |
+| SPEAKING | Green | Playing TTS |
+| MUTED | Orange | Mic disabled |
+| ERROR | Red | Disconnected |
 
-**Build**:
+### Build
 ```bash
 cd examples/voice_pe_satellite
 idf.py set-target esp32s3
-idf.py menuconfig   # Set WiFi + HiveMind host/key/password
+idf.py menuconfig   # Configure listen/STT/TTS modes + WiFi + HiveMind creds
 idf.py build flash monitor
 ```
 
-**Dependencies**: `espressif/esp-sr ^1.3.0` (auto-fetched via `idf_component.yml`). Requires 16 MB flash with custom partition table for WakeNet model storage.
+**Dependencies**: `espressif/esp-sr ^1.3.0`, `espressif/led_strip ^2.5.0` (auto-fetched via `idf_component.yml`). Requires 16 MB flash with custom partition table.
