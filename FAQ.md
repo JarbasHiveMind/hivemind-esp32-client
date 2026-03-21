@@ -20,3 +20,12 @@ A: Protocol uses 4096-byte buffers for envelopes and plaintext (`hivemind_protoc
 
 **Q: Does it support TLS?**
 A: Not yet. V1 scope uses unencrypted WebSocket with application-layer AEAD encryption.
+
+**Q: Can I use this with a Home Assistant Voice PE?**
+A: Yes. The `examples/voice_pe_satellite/` example targets the Voice PE board (ESP32-S3 + XMOS Voice Kit + AIC3204 DAC). It uses push-to-talk via the center button, plays TTS through the speaker, and shows state on the LED ring. The XMOS codec must be pre-flashed with its firmware (no DFU from ESP-IDF). Build with `idf.py set-target esp32s3`.
+
+**Q: What sample rate conversion does the Voice PE speaker use?**
+A: TTS arrives as 16 kHz 16-bit mono. The speaker driver triplicates each sample to reach 48 kHz, zero-extends to 32-bit, and duplicates to stereo for the AIC3204 DAC. Adequate for speech; not suitable for music.
+
+**Q: Does the Voice PE example support wake word detection?**
+A: No. It uses push-to-talk (center button toggle). The micro_wake_word models from ESPHome are not available in bare ESP-IDF. Wake word could be added via a separate library (e.g., ESP-SR).
