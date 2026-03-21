@@ -28,4 +28,10 @@ A: Yes. The `examples/voice_pe_satellite/` example targets the Voice PE board (E
 A: TTS arrives as 16 kHz 16-bit mono. The speaker driver triplicates each sample to reach 48 kHz, zero-extends to 32-bit, and duplicates to stereo for the AIC3204 DAC. Adequate for speech; not suitable for music.
 
 **Q: Does the Voice PE example support wake word detection?**
-A: No. It uses push-to-talk (center button toggle). The micro_wake_word models from ESPHome are not available in bare ESP-IDF. Wake word could be added via a separate library (e.g., ESP-SR).
+A: Yes. It uses ESP-SR's WakeNet9 with the "hi_esp" wake word. Say "Hi ESP" to start a voice session. VAD automatically detects when you stop speaking. The center button also works as manual push-to-talk override.
+
+**Q: What ESP-SR components does the Voice PE example use?**
+A: Audio Front-End (AFE) with WakeNet9 (wake word) and VADNet (voice activity detection). AEC is disabled because the XMOS Voice Kit handles echo cancellation in hardware. Dependency: `espressif/esp-sr ^1.3.0`.
+
+**Q: Can I use a custom wake word instead of "hi_esp"?**
+A: Change `cfg.wakenet_model_name` in `speech_detect.c`. Built-in options include "hi_esp", "alexa", "hi_lexin". Custom wake words require Espressif's model training service.

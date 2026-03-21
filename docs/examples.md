@@ -126,20 +126,34 @@ cJSON_Delete(data);
 
 ## 5. Voice PE Satellite (Full Hardware Satellite)
 
-Complete satellite example for the **Home Assistant Voice Preview Edition** board (ESP32-S3). Push-to-talk with TTS playback and LED state feedback.
+Full-featured satellite for the **Home Assistant Voice Preview Edition** board (ESP32-S3). On-device wake word + VAD with TTS playback and LED state feedback.
 
-**Hardware**: XMOS Voice Kit (mic I2S input) + TI AIC3204 (speaker I2S output) + 12x WS2812 LED ring + center button + mute switch.
+**Hardware**: XMOS Voice Kit (mic) + TI AIC3204 (speaker) + 12x WS2812 LED ring + center button + mute switch.
+
+**Audio pipeline**: I2S mic → ESP-SR AFE (WakeNet9 "hi_esp" + VAD) → HiveMind STT streaming → hub → TTS playback.
 
 **Source**: `examples/voice_pe_satellite/`
 
 **Key files**:
-- `main.c` — orchestration, HiveMind callbacks, FreeRTOS tasks
+- `main.c` — audio pipeline task, HiveMind callbacks, UI task
+- `speech_detect.c/h` — ESP-SR AFE wrapper (WakeNet + VAD)
 - `voice_pe_hw.h` — all pin definitions for Voice PE board
 - `codec_init.c` — I2C bus, XMOS reset, AIC3204 DAC register sequence
 - `i2s_mic.c` — 32-bit stereo input → 16-bit mono extraction
 - `i2s_spk.c` — ring buffer + 16 kHz→48 kHz upsample + 32-bit stereo output
-- `led_ring.c` — 5-state solid colors (idle/listening/speaking/error/muted)
-- `button.c` — GPIO0 ISR debounce + GPIO3 mute polling
+- `led_ring.c` — 6-state solid colors (idle/wake-detected/listening/speaking/error/muted)
+- `button.c` — GPIO0 ISR debounce (manual override) + GPIO3 mute polling
+
+**States**:
+
+| State | Trigger | LEDs | Audio |
+|-------|---------|------|-------|
+| IDLE | Default | Dim white | WakeNet listening |
+| WAKE_DETECTED | "hi_esp" heard | Cyan | STT session starts |
+| LISTENING | Speech detected | Blue | Streaming to hub |
+| SPEAKING | TTS received | Green | Playing response |
+| MUTED | Mute switch | Orange | All mic processing off |
+| ERROR | Disconnected | Red | — |
 
 **Build**:
 ```bash
@@ -148,3 +162,5 @@ idf.py set-target esp32s3
 idf.py menuconfig   # Set WiFi + HiveMind host/key/password
 idf.py build flash monitor
 ```
+
+**Dependencies**: `espressif/esp-sr ^1.3.0` (auto-fetched via `idf_component.yml`). Requires 16 MB flash with custom partition table for WakeNet model storage.
