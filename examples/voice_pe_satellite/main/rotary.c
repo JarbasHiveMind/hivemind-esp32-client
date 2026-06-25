@@ -12,6 +12,7 @@
 #include "voice_pe_hw.h"
 
 #include "driver/gpio.h"
+#include "esp_attr.h"
 #include "esp_log.h"
 
 #include <stdatomic.h>

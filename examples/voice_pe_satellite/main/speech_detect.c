@@ -12,17 +12,21 @@
  * The XMOS codec already provides AEC/NS/AGC, so AFE AEC is disabled.
  * Primary value from ESP-SR here is WakeNet + VAD.
  *
- * API targets ESP-SR v1.3.0. Key differences from v2.0+:
- * - v1.x uses esp_afe_handle_from_config() (v2 removed ESP_AFE_SR_HANDLE global)
- * - v1.x uses afe_config_init() with channel format string
- * - v1.x uses esp_srmodel_init/filter for model loading
+ * Targets the current espressif/esp-sr AFE/srmodel API:
+ * - afe_config_init(input_format, models, AFE_TYPE_SR, AFE_MODE_LOW_COST) +
+ *   afe_config_free()  (esp_afe_config.h)
+ * - esp_afe_handle_from_config()  (esp_afe_sr_models.h)
+ * - esp_srmodel_init()/esp_srmodel_filter()  (model_path.h)
+ * - vad_state_t { VAD_SILENCE, VAD_SPEECH }  (esp_vad.h, via esp_afe_config.h)
  */
 #include "speech_detect.h"
 
+#include "esp_afe_config.h"
 #include "esp_afe_sr_iface.h"
 #include "esp_afe_sr_models.h"
 #include "esp_wn_iface.h"
 #include "esp_wn_models.h"
+#include "model_path.h"
 #include "esp_log.h"
 
 #include <string.h>
