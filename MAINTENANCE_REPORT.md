@@ -15,6 +15,22 @@
   `EXTRA_COMPONENT_DIRS`/`REQUIRES` wiring for the text and mic examples so they build
   standalone. Refreshed README/docs/FAQ for the managed dependency, ESP-IDF version,
   and the test story. Verified all 69 host unit tests pass locally with the new build.
+- **Firmware build bugs surfaced once the ESP-IDF job actually ran** (all invisible
+  while CI only built host tests, all fixed): the component required the non-existent
+  `cjson`/`esp_random` components (corrected to the bundled `json` and
+  `esp_hw_support`); the text/mic examples had no `sdkconfig.defaults`, so ESP-IDF's
+  default mbedTLS left ChaCha20-Poly1305 disabled and linking failed
+  (`undefined reference to mbedtls_chachapoly_*`) — added per-example defaults enabling
+  AES-GCM/ChaCha20-Poly1305/POLY1305/PKCS5/HW-AES; Voice PE's `i2s_spk.h`/`rotary.h`
+  declared `bool` APIs without `<stdbool.h>`, and `rotary.c` used `IRAM_ATTR` without
+  `esp_attr.h`; and Voice PE's `speech_detect.c` already used the esp-sr V2 AFE API
+  (`afe_config_init`/`AFE_TYPE_SR`/`esp_afe_handle_from_config`) but pulled the V1
+  dependency (`^1.3.0`) and omitted the headers declaring those symbols — pinned
+  `espressif/esp-sr` to `^2.0.0` and added the `esp_afe_config.h` + `model_path.h`
+  includes.
+- **Final CI state**: all four jobs green — host unit tests (native) plus the ESP-IDF
+  firmware build of text_satellite (esp32), mic_satellite (esp32), and
+  voice_pe_satellite (esp32s3) against ESP-IDF v5.4.
 - **Protocol V1 conformance**: audited the C crypto/binary/handshake against the
   canonical `hivemind_bus_client` Python reference — CONFORMS (PBKDF2 100k/SHA256/XOR
   salt, 8-byte IV + 48-hex hSub, AES-GCM 16-byte nonce, ChaCha20 12-byte nonce, 16-byte
