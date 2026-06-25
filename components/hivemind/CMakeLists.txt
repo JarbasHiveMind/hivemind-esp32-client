@@ -4,5 +4,5 @@ idf_component_register(
          "src/hivemind_protocol.c"
          "src/hivemind_binary.c"
     INCLUDE_DIRS "include"
-    REQUIRES esp_websocket_client mbedtls cjson esp_timer esp_random log
+    REQUIRES esp_websocket_client mbedtls json esp_timer esp_random log
 )
