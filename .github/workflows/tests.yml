@@ -2,27 +2,71 @@ name: Tests
 
 on:
   push:
-    branches: [ master, dev, main ]
+    branches: [ master, dev ]
   pull_request:
-    branches: [ master, dev, main ]
+    branches: [ master, dev ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  c-host-tests:
+  # ----------------------------------------------------------------
+  # Native host unit tests: crypto, binary V1 codec, protocol FSM,
+  # VAD / WAV / audio helpers. Builds mbedTLS from source (pinned to
+  # the ESP-IDF 5.x LTS line) so the host links the same crypto API
+  # the device uses — no reliance on the distro's libmbedtls.
+  # ----------------------------------------------------------------
+  host-tests:
+    name: Host unit tests (native)
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libmbedtls-dev cmake build-essential
+      - name: Install build tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential python3
 
-    - name: Build host tests
-      run: |
-        cmake -B build test_host/
-        cmake --build build
+      - name: Cache mbedTLS / Unity sources
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: hostdeps-${{ runner.os }}-mbedtls366-unity252-cjson1718
 
-    - name: Run host tests
-      run: |
-        ./build/test_host_runner
+      - name: Configure
+        run: cmake -B build test_host/
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run tests
+        run: ./build/test_host_runner
+
+  # ----------------------------------------------------------------
+  # ESP-IDF firmware build (compile check). Confirms the component
+  # and every example compile against a current stable ESP-IDF for
+  # their supported target. This is the closest thing to an on-device
+  # check that is feasible in CI — a real hardware-in-the-loop test
+  # against a live hub is NOT possible here (see docs/integration-testing.md
+  # for the documented manual procedure).
+  # ----------------------------------------------------------------
+  idf-build:
+    name: ESP-IDF build (${{ matrix.example.path }} / ${{ matrix.example.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        example:
+          - { path: "examples/text_satellite",     target: "esp32" }
+          - { path: "examples/mic_satellite",       target: "esp32" }
+          - { path: "examples/voice_pe_satellite",  target: "esp32s3" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: idf.py build
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.4
+          target: ${{ matrix.example.target }}
+          path: ${{ matrix.example.path }}

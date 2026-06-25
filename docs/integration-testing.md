@@ -2,6 +2,23 @@
 
 This guide explains how to build and test the HiveMind ESP32 client with a real hub.
 
+## What is and isn't tested in CI
+
+CI (`.github/workflows/tests.yml`) verifies two things automatically:
+
+1. **Host unit tests** — the crypto layer, the binary V1 codec, the protocol
+   handshake FSM, and the Voice PE audio helpers are compiled natively and run as
+   Unity tests. The crypto/binary tests include cross-platform interop vectors that
+   pin the wire format to HiveMind Protocol V1.
+2. **ESP-IDF firmware build** — every example is compiled against a current stable
+   ESP-IDF for its target (`text_satellite`/`mic_satellite` → `esp32`,
+   `voice_pe_satellite` → `esp32s3`). This is a compile/link check of the real
+   firmware, not an execution.
+
+**A full hardware-in-the-loop test against a live hub is NOT run in CI** — it needs
+real ESP32 hardware, Wi-Fi, and a running `hivemind-core`. Run the scenarios below
+manually on a device when validating an end-to-end change.
+
 ## Prerequisites
 
 ### Host Requirements
@@ -87,14 +104,10 @@ idf.py build flash monitor
 
 **Test**: Text satellite sends "hello" utterance, receives speak response
 
-**Procedure**:
-```bash
-# On device (via serial):
-send_utterance("hello")
-
-# On hub, verify message was received:
-# (Check hub logs or use web interface)
-```
+**Procedure**: the `text_satellite` example sends `"hello world"` automatically
+once it reaches the `READY` state (see `examples/text_satellite/main/main.c`).
+Watch `idf.py monitor` for the response and check the hub logs to confirm the
+message was received.
 
 **Expected Output**:
 ```
@@ -200,7 +213,7 @@ hm_config_t config = {
 [HIVEMIND] No memory for message buffer
 ```
 - ESP32 may need heap optimization
-- Reduce WebSocket buffer: `CONFIG_WEBSOCKET_BUFFER_SIZE`
+- Reduce the WebSocket buffer: `CONFIG_HIVEMIND_WS_BUFFER_SIZE` (HiveMind Client menu)
 - Profile with `heap_trace_init_standalone()` to find leaks
 
 ### PBKDF2 taking too long
@@ -209,25 +222,20 @@ hm_config_t config = {
 
 ## CI/CD Integration
 
-Example GitHub Actions workflow:
+CI builds every example with the official ESP-IDF action — see
+`.github/workflows/tests.yml`. The `idf-build` matrix runs:
 
 ```yaml
-- name: Build ESP32 text_satellite
-  run: |
-    cd examples/text_satellite
-    idf.py set-target esp32
-    idf.py build
-
-- name: Run QEMU simulator
-  run: |
-    export QEMU_ESP32_FLASH=examples/text_satellite/build/text_satellite.bin
-    idf.py qemu
-    # Timeout after connection success or 60s
-
-- name: Test with real hub (manual)
-  # Requires ESP32 hardware + serial connection
-  # Can be run manually by developers, not in CI
+- uses: espressif/esp-idf-ci-action@v1
+  with:
+    esp_idf_version: v5.4
+    target: esp32        # esp32s3 for voice_pe_satellite
+    path: examples/text_satellite
 ```
+
+The scenarios above (connect/handshake, utterance, audio stream, cipher
+negotiation, reconnection) require real hardware and a live hub, so they are run
+manually by developers — they are deliberately not part of CI.
 
 ## Next Steps
 

@@ -13,18 +13,25 @@ ESP32 (this component)  ⇄  HiveMind hub (hivemind-core)  ⇄  OVOS skills
 - **Encrypted** — AES-256-GCM (hardware-accelerated on ESP32) or ChaCha20-Poly1305; session key derived from your password via PBKDF2-HMAC-SHA256.
 - **Bus + binary transport** — send text utterances and arbitrary bus messages; stream raw audio and receive TTS audio over the binary channel.
 - **Auto-reconnect** — reconnects after a drop, configurable via `reconnect_ms`.
-- **Drop-in component** — built on `esp_websocket_client`, `mbedtls`, and `cjson` (all in ESP-IDF).
+- **Drop-in component** — built on `mbedtls` and `json` (bundled in ESP-IDF) plus the
+  `espressif/esp_websocket_client` managed component, declared in the component's
+  `idf_component.yml` and pulled in automatically by the IDF component manager.
 
 ## Prerequisites
 
-- **ESP-IDF 5.0+** on the build host.
+- **ESP-IDF 5.1+** on the build host (CI builds against v5.4).
 - An **ESP32** (or ESP32-S3 for the Voice PE example) with Wi-Fi.
 - A running **HiveMind hub** ([hivemind-core](https://github.com/JarbasHiveMind/HiveMind-core)) reachable on the same network.
 - A **client credential** (username, access key, password) issued by the hub with `hivemind-core add-client`.
 
 ## Install
 
-Drop `components/hivemind/` into your project's `components/` directory (or pull it via the ESP Component Registry). The component declares its ESP-IDF dependencies: `esp_websocket_client`, `mbedtls`, `cjson`, `esp_timer`, `esp_random`, `log`.
+Drop `components/hivemind/` into your project's `components/` directory. The
+component's `idf_component.yml` declares its managed dependency
+(`espressif/esp_websocket_client`) and an `idf >= 5.1` floor; its `CMakeLists.txt`
+requires the bundled `mbedtls`, `json`, `esp_timer`, `esp_random`, and `log`
+components. Run `idf.py reconfigure` (or just `idf.py build`) and the IDF component
+manager fetches the managed dependency into `managed_components/`.
 
 ## Quickstart
 
@@ -121,6 +128,30 @@ In the examples, `host`, `access_key`, and `password` come from `idf.py menuconf
 - **Out of memory** — protocol buffers are fixed-size (4096 bytes); large messages can truncate. Stream audio in small chunks.
 
 See [`docs/integration-testing.md`](docs/integration-testing.md) for more.
+
+## Testing
+
+Two layers run in CI (`.github/workflows/tests.yml`):
+
+- **Host unit tests** — the crypto layer, the binary V1 codec, the handshake FSM,
+  and the Voice PE audio helpers compile natively and run under Unity. mbedTLS is
+  built from source pinned to the same 3.6.x line ESP-IDF bundles, so the host links
+  the identical crypto API the device uses. The crypto/binary suites include
+  cross-platform interop vectors that pin the wire format to HiveMind Protocol V1
+  (PBKDF2-HMAC-SHA256 100k / XOR-salt key derivation, the 48-hex hSub, AES-256-GCM and
+  ChaCha20-Poly1305 AEAD, the `ciphertext`/`tag`/`nonce` JSON envelope, and all seven
+  field encodings). Build them locally with:
+
+  ```bash
+  cmake -B build test_host/
+  cmake --build build
+  ./build/test_host_runner
+  ```
+
+- **ESP-IDF firmware build** — every example is compiled against a current stable
+  ESP-IDF for its target. A live, hardware-in-the-loop test against a running hub is
+  not feasible in CI; the manual procedure is in
+  [`docs/integration-testing.md`](docs/integration-testing.md).
 
 ## Documentation
 
