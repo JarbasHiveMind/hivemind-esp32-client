@@ -1,0 +1,10 @@
+# MbedTLS cipher support required by the HiveMind crypto layer.
+# ESP-IDF ships mbedTLS with ChaCha20-Poly1305 disabled by default; the HiveMind
+# handshake/session uses both AES-GCM and ChaCha20-Poly1305, and PBKDF2 (PKCS5).
+# MBEDTLS_CHACHAPOLY_C depends on CHACHA20_C + POLY1305_C, so all three are needed.
+CONFIG_MBEDTLS_HARDWARE_AES=y
+CONFIG_MBEDTLS_PKCS5_C=y
+CONFIG_MBEDTLS_CHACHA20_C=y
+CONFIG_MBEDTLS_POLY1305_C=y
+CONFIG_MBEDTLS_CHACHAPOLY_C=y
+CONFIG_MBEDTLS_GCM_C=y
