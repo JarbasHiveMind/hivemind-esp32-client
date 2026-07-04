@@ -52,6 +52,20 @@ void test_proto_220(void);  /* encrypt not-ready returns error */
 void test_proto_232(void);  /* decrypt not-ready returns error */
 void test_proto_244(void);  /* encrypt-decrypt roundtrip */
 
+/* test_noise.c — TEST_FILE_ID=noise */
+void test_noise_52(void);   /* XXpsk2 handshake byte-identical to Python */
+void test_noise_62(void);   /* XXpsk2 transport frames interop */
+void test_noise_98(void);   /* XXpsk2 replay rejected */
+void test_noise_118(void);  /* XXpsk2 wrong PSK fails */
+void test_noise_143(void);  /* XXpsk2 tampered prologue fails */
+void test_noise_166(void);  /* KKpsk0 handshake byte-identical to Python */
+void test_noise_212(void);  /* KKpsk0 wrong PSK fails */
+void test_noise_238(void);  /* canonical JSON matches Python */
+void test_noise_296(void);  /* v3 negotiation sends Noise message 1 */
+void test_noise_335(void);  /* v3 negotiation prefers KKpsk0 when pinned */
+void test_noise_357(void);  /* fallback to legacy handshake */
+void test_noise_389(void);  /* transport frame markers roundtrip */
+
 /* test_vad_simple.c — TEST_FILE_ID=vad */
 void test_vad_12(void);   /* vad detects silence in zero buffer */
 void test_vad_19(void);   /* vad detects speech in loud signal */
@@ -131,6 +145,20 @@ int main(void)
     RUN_TEST(test_crypto_104);
     RUN_TEST(test_crypto_129);
     RUN_TEST(test_crypto_155);
+
+    /* Noise (protocol v3) tests */
+    RUN_TEST(test_noise_52);
+    RUN_TEST(test_noise_62);
+    RUN_TEST(test_noise_98);
+    RUN_TEST(test_noise_118);
+    RUN_TEST(test_noise_143);
+    RUN_TEST(test_noise_166);
+    RUN_TEST(test_noise_212);
+    RUN_TEST(test_noise_238);
+    RUN_TEST(test_noise_296);
+    RUN_TEST(test_noise_335);
+    RUN_TEST(test_noise_357);
+    RUN_TEST(test_noise_389);
 
     /* VAD tests */
     RUN_TEST(test_vad_12);

@@ -35,6 +35,22 @@ typedef struct {
     hm_cipher_t preferred_cipher;    /**< Preferred cipher for negotiation. */
     hm_encoding_t preferred_encoding; /**< Preferred encoding for negotiation (default HM_ENCODING_JSON_HEX). */
     uint32_t reconnect_ms;    /**< Auto-reconnect delay in ms (0 = disabled, default 5000). */
+
+    /* --- Protocol v3 (Noise handshake) — optional --- */
+    /** Provisioned 32-byte PSK, hex-encoded (64 chars), or NULL to disable
+     *  protocol v3. Compute once on a capable host as
+     *  argon2id(password, SHA-256(server node_id)) — the hivemind-core PSK
+     *  derivation command — and flash it; argon2id never runs on-device
+     *  (HIVEMIND-CRYPTO-1 §3.4.4). */
+    const char *noise_psk_hex;
+    /** Own X25519 static private key, hex-encoded (64 chars), or NULL to
+     *  generate a fresh key at init. Provision one so the server's TOFU pin
+     *  of this device survives reboots. */
+    const char *noise_static_key_hex;
+    /** Server's X25519 static public key, hex-encoded (64 chars), or NULL.
+     *  When set it is the pinned server key (a mismatching server aborts the
+     *  handshake) and enables the KKpsk0 pattern. */
+    const char *noise_server_key_hex;
 } hm_config_t;
 
 /** Callback: bus message received. */

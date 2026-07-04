@@ -7,6 +7,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <esp_random.h>
 #include <esp_log.h>
 #include "cJSON.h"
@@ -108,6 +109,158 @@ static esp_err_t parse_msg_type_flexible(const char *type_str, hm_msg_type_t *ty
     return ESP_ERR_NOT_FOUND;
 }
 
+/* --------------- Canonical JSON (Noise prologue) --------------- */
+
+typedef struct {
+    char *buf;
+    size_t len;
+    size_t cap;
+    bool err;
+} canon_buf_t;
+
+static void canon_put(canon_buf_t *b, const char *data, size_t len)
+{
+    if (b->err) {
+        return;
+    }
+    if (b->len + len + 1 > b->cap) {
+        size_t cap = b->cap ? b->cap * 2 : 256;
+        while (cap < b->len + len + 1) {
+            cap *= 2;
+        }
+        char *nb = (char *)realloc(b->buf, cap);
+        if (!nb) {
+            b->err = true;
+            return;
+        }
+        b->buf = nb;
+        b->cap = cap;
+    }
+    memcpy(b->buf + b->len, data, len);
+    b->len += len;
+    b->buf[b->len] = '\0';
+}
+
+static void canon_puts(canon_buf_t *b, const char *s)
+{
+    canon_put(b, s, strlen(s));
+}
+
+/** JSON string escaping matching Python json.dumps(ensure_ascii=False). */
+static void canon_put_string(canon_buf_t *b, const char *s)
+{
+    canon_puts(b, "\"");
+    for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
+        switch (*p) {
+        case '"':  canon_puts(b, "\\\""); break;
+        case '\\': canon_puts(b, "\\\\"); break;
+        case '\b': canon_puts(b, "\\b");  break;
+        case '\f': canon_puts(b, "\\f");  break;
+        case '\n': canon_puts(b, "\\n");  break;
+        case '\r': canon_puts(b, "\\r");  break;
+        case '\t': canon_puts(b, "\\t");  break;
+        default:
+            if (*p < 0x20) {
+                char esc[8];
+                snprintf(esc, sizeof(esc), "\\u%04x", *p);
+                canon_puts(b, esc);
+            } else {
+                canon_put(b, (const char *)p, 1);
+            }
+        }
+    }
+    canon_puts(b, "\"");
+}
+
+static int canon_key_cmp(const void *a, const void *b)
+{
+    const cJSON *ia = *(const cJSON *const *)a;
+    const cJSON *ib = *(const cJSON *const *)b;
+    return strcmp(ia->string ? ia->string : "", ib->string ? ib->string : "");
+}
+
+static void canon_print(canon_buf_t *b, const cJSON *item)
+{
+    if (b->err || !item) {
+        b->err = true;
+        return;
+    }
+    if (cJSON_IsNull(item)) {
+        canon_puts(b, "null");
+    } else if (cJSON_IsBool(item)) {
+        canon_puts(b, cJSON_IsTrue(item) ? "true" : "false");
+    } else if (cJSON_IsNumber(item)) {
+        char num[64];
+        double d = item->valuedouble;
+        /* Match Python's int serialization; negotiation payloads use
+         * integers only — floats are printed with %.17g best effort. */
+        if (d == (double)(long long)d) {
+            snprintf(num, sizeof(num), "%lld", (long long)d);
+        } else {
+            snprintf(num, sizeof(num), "%.17g", d);
+        }
+        canon_puts(b, num);
+    } else if (cJSON_IsString(item)) {
+        canon_put_string(b, item->valuestring ? item->valuestring : "");
+    } else if (cJSON_IsArray(item)) {
+        canon_puts(b, "[");
+        bool first = true;
+        for (const cJSON *c = item->child; c; c = c->next) {
+            if (!first) {
+                canon_puts(b, ",");
+            }
+            first = false;
+            canon_print(b, c);
+        }
+        canon_puts(b, "]");
+    } else if (cJSON_IsObject(item)) {
+        size_t n = 0;
+        for (const cJSON *c = item->child; c; c = c->next) {
+            n++;
+        }
+        const cJSON **items = NULL;
+        if (n > 0) {
+            items = (const cJSON **)malloc(n * sizeof(*items));
+            if (!items) {
+                b->err = true;
+                return;
+            }
+            size_t i = 0;
+            for (const cJSON *c = item->child; c; c = c->next) {
+                items[i++] = c;
+            }
+            qsort(items, n, sizeof(*items), canon_key_cmp);
+        }
+        canon_puts(b, "{");
+        for (size_t i = 0; i < n; i++) {
+            if (i > 0) {
+                canon_puts(b, ",");
+            }
+            canon_put_string(b, items[i]->string ? items[i]->string : "");
+            canon_puts(b, ":");
+            canon_print(b, items[i]);
+        }
+        canon_puts(b, "}");
+        free((void *)items);
+    } else {
+        b->err = true;
+    }
+}
+
+char *hm_protocol_canonical_json(const cJSON *item)
+{
+    canon_buf_t b = {0};
+    canon_print(&b, item);
+    if (b.err) {
+        free(b.buf);
+        return NULL;
+    }
+    if (!b.buf) {
+        return strdup("");
+    }
+    return b.buf;
+}
+
 /* --------------- Public API --------------- */
 
 void hm_protocol_init(hm_protocol_ctx_t *ctx, const char *password,
@@ -122,6 +275,31 @@ void hm_protocol_init(hm_protocol_ctx_t *ctx, const char *password,
     ctx->state = HM_STATE_CONNECTING;
     generate_uuid_v4(ctx->session_id);
     ESP_LOGI(TAG, "Protocol init, session_id=%s", ctx->session_id);
+}
+
+void hm_protocol_set_v3(hm_protocol_ctx_t *ctx,
+                        const uint8_t psk[HM_NOISE_KEY_SIZE],
+                        const uint8_t static_priv[HM_NOISE_KEY_SIZE],
+                        const uint8_t *server_static_pub)
+{
+    memcpy(ctx->psk, psk, HM_NOISE_KEY_SIZE);
+    memcpy(ctx->static_key, static_priv, HM_NOISE_KEY_SIZE);
+    if (server_static_pub) {
+        memcpy(ctx->server_static_key, server_static_pub, HM_NOISE_KEY_SIZE);
+        ctx->has_server_static_key = true;
+    }
+    ctx->v3_enabled = true;
+    ESP_LOGI(TAG, "Protocol v3 (Noise) enabled%s",
+             server_static_pub ? ", server static key pinned" : "");
+}
+
+void hm_protocol_deinit(hm_protocol_ctx_t *ctx)
+{
+    free(ctx->server_hello_canon);
+    ctx->server_hello_canon = NULL;
+    free(ctx->pending_bin);
+    ctx->pending_bin = NULL;
+    ctx->pending_bin_len = 0;
 }
 
 esp_err_t hm_protocol_build_envelope(const char *msg_type, cJSON *payload,
@@ -248,8 +426,17 @@ esp_err_t hm_protocol_decrypt_message(hm_protocol_ctx_t *ctx,
     }
     pt_buf[pt_len] = '\0';
 
-    /* Parse JSON envelope */
-    cJSON *root = cJSON_Parse((const char *)pt_buf);
+    return hm_protocol_parse_envelope((const char *)pt_buf,
+                                      type_out, payload_out, context_out);
+}
+
+esp_err_t hm_protocol_parse_envelope(const char *json,
+                                     hm_msg_type_t *type_out,
+                                     cJSON **payload_out,
+                                     cJSON **context_out)
+{
+    esp_err_t err;
+    cJSON *root = cJSON_Parse(json);
     if (!root) {
         ESP_LOGE(TAG, "Failed to parse decrypted JSON");
         return ESP_ERR_INVALID_RESPONSE;
@@ -322,9 +509,394 @@ static esp_err_t handle_hello(hm_protocol_ctx_t *ctx, const cJSON *payload)
         ctx->server_node_id[sizeof(ctx->server_node_id) - 1] = '\0';
     }
 
+    /* Retain the exact canonical payload bytes for the Noise prologue
+     * (HIVEMIND-CRYPTO-1 §3.4.3). */
+    if (ctx->v3_enabled) {
+        free(ctx->server_hello_canon);
+        ctx->server_hello_canon = hm_protocol_canonical_json(payload);
+    }
+
     ctx->state = HM_STATE_HELLO_RECEIVED;
     ESP_LOGI(TAG, "HELLO received, peer=%s node_id=%s",
              ctx->server_peer, ctx->server_node_id);
+    return ESP_OK;
+}
+
+/* --------------- Protocol v3: Noise handshake --------------- */
+
+/** True when the array contains the given string. */
+static bool json_array_contains(const cJSON *arr, const char *value)
+{
+    const cJSON *item;
+    cJSON_ArrayForEach(item, arr) {
+        if (cJSON_IsString(item) && item->valuestring &&
+            strcmp(item->valuestring, value) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/** Hex-encode into a malloc'd string. */
+static char *hex_dup(const uint8_t *data, size_t len)
+{
+    char *out = (char *)malloc(len * 2 + 1);
+    if (!out) {
+        return NULL;
+    }
+    for (size_t i = 0; i < len; i++) {
+        sprintf(out + 2 * i, "%02x", data[i]);
+    }
+    return out;
+}
+
+/** Build a HANDSHAKE envelope carrying a Noise message
+ *  ({"noise":{"pattern","suite","msg"}}) — pattern/suite only on message 1. */
+static char *build_noise_envelope(const char *pattern, const char *suite,
+                                  const uint8_t *msg, size_t msg_len)
+{
+    char *msg_hex = hex_dup(msg, msg_len);
+    if (!msg_hex) {
+        return NULL;
+    }
+    cJSON *payload = cJSON_CreateObject();
+    if (!payload) {
+        free(msg_hex);
+        return NULL;
+    }
+    cJSON *noise = cJSON_AddObjectToObject(payload, "noise");
+    if (pattern) {
+        cJSON_AddStringToObject(noise, "pattern", pattern);
+    }
+    if (suite) {
+        cJSON_AddStringToObject(noise, "suite", suite);
+    }
+    cJSON_AddStringToObject(noise, "msg", msg_hex);
+    free(msg_hex);
+
+    char envelope[2048];
+    esp_err_t err = hm_protocol_build_envelope("shake", payload,
+                                               envelope, sizeof(envelope));
+    cJSON_Delete(payload);
+    if (err != ESP_OK) {
+        return NULL;
+    }
+    return strdup(envelope);
+}
+
+/**
+ * @brief Decide whether the server's parameter HANDSHAKE offers a v3 Noise
+ *        handshake this client can run; select the pattern.
+ *
+ * @return true and sets *pattern_out when the Noise path applies.
+ */
+static bool select_noise(const hm_protocol_ctx_t *ctx, const cJSON *payload,
+                         hm_noise_pattern_t *pattern_out)
+{
+    if (!ctx->v3_enabled) {
+        return false;
+    }
+    const cJSON *maxv = cJSON_GetObjectItemCaseSensitive(payload, "max_protocol_version");
+    if (!cJSON_IsNumber(maxv) || maxv->valuedouble < 3) {
+        return false;
+    }
+    const cJSON *noise = cJSON_GetObjectItemCaseSensitive(payload, "noise");
+    if (!cJSON_IsObject(noise)) {
+        return false;
+    }
+    const cJSON *suites = cJSON_GetObjectItemCaseSensitive(noise, "suites");
+    if (!json_array_contains(suites, HM_NOISE_SUITE_CHACHA)) {
+        ESP_LOGW(TAG, "Server does not offer the mandatory ChaChaPoly suite");
+        return false;
+    }
+    const cJSON *patterns = cJSON_GetObjectItemCaseSensitive(noise, "patterns");
+    /* KKpsk0 is preferred when the server static key is provisioned/pinned
+     * and the server offers it (HIVEMIND-CRYPTO-1 §3.4.2). */
+    if (ctx->has_server_static_key && json_array_contains(patterns, "KKpsk0")) {
+        *pattern_out = HM_NOISE_PATTERN_KKPSK0;
+        return true;
+    }
+    if (json_array_contains(patterns, "XXpsk2")) {
+        *pattern_out = HM_NOISE_PATTERN_XXPSK2;
+        return true;
+    }
+    return false;
+}
+
+/**
+ * @brief Start the v3 Noise handshake: send Noise message 1 inside a
+ *        HANDSHAKE envelope (HIVEMIND-CRYPTO-1 §3.4.3 step 3).
+ */
+static esp_err_t start_noise_handshake(hm_protocol_ctx_t *ctx,
+                                       hm_noise_pattern_t pattern,
+                                       const cJSON *shake_payload,
+                                       char **reply_out)
+{
+    const char *pattern_name = hm_noise_pattern_name(pattern);
+    char protocol_name[64];
+    snprintf(protocol_name, sizeof(protocol_name), "Noise_%s_%s",
+             pattern_name, HM_NOISE_SUITE_CHACHA);
+
+    /* Prologue: canonical HELLO payload + canonical parameter HANDSHAKE
+     * payload + selected protocol name (§3.4.3 downgrade protection). */
+    char *shake_canon = hm_protocol_canonical_json(shake_payload);
+    if (!shake_canon) {
+        return ESP_ERR_NO_MEM;
+    }
+    const char *hello_canon = ctx->server_hello_canon ? ctx->server_hello_canon : "";
+    size_t prologue_len = strlen(hello_canon) + strlen(shake_canon)
+                          + strlen(protocol_name);
+    uint8_t *prologue = (uint8_t *)malloc(prologue_len);
+    if (!prologue) {
+        free(shake_canon);
+        return ESP_ERR_NO_MEM;
+    }
+    size_t off = 0;
+    memcpy(prologue + off, hello_canon, strlen(hello_canon));
+    off += strlen(hello_canon);
+    memcpy(prologue + off, shake_canon, strlen(shake_canon));
+    off += strlen(shake_canon);
+    memcpy(prologue + off, protocol_name, strlen(protocol_name));
+    free(shake_canon);
+
+    esp_err_t err = hm_noise_init(&ctx->noise, pattern, ctx->psk,
+                                  ctx->static_key,
+                                  ctx->has_server_static_key ? ctx->server_static_key : NULL,
+                                  prologue, prologue_len, NULL);
+    free(prologue);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Noise init failed");
+        return err;
+    }
+
+    /* Noise message 1 payload: our encodings + binarize capability. */
+    cJSON *msg_payload = cJSON_CreateObject();
+    if (!msg_payload) {
+        return ESP_ERR_NO_MEM;
+    }
+    cJSON_AddBoolToObject(msg_payload, "binarize", ctx->binarize);
+    cJSON *encodings = cJSON_AddArrayToObject(msg_payload, "encodings");
+    cJSON_AddItemToArray(encodings,
+                         cJSON_CreateString(hm_encoding_name(ctx->preferred_encoding)));
+    char *payload_json = hm_protocol_canonical_json(msg_payload);
+    cJSON_Delete(msg_payload);
+    if (!payload_json) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    uint8_t msg1[256];
+    size_t msg1_len = 0;
+    err = hm_noise_write_message(&ctx->noise,
+                                 (const uint8_t *)payload_json, strlen(payload_json),
+                                 msg1, sizeof(msg1), &msg1_len);
+    free(payload_json);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to write Noise message 1");
+        return err;
+    }
+
+    *reply_out = build_noise_envelope(pattern_name, HM_NOISE_SUITE_CHACHA,
+                                      msg1, msg1_len);
+    if (!*reply_out) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    ctx->state = HM_STATE_NOISE_HANDSHAKE_SENT;
+    ESP_LOGI(TAG, "Noise message 1 sent (%s), state=NOISE_HANDSHAKE_SENT",
+             protocol_name);
+    return ESP_OK;
+}
+
+/**
+ * @brief Handle the server's Noise message 2 (HIVEMIND-CRYPTO-1 §3.4.3
+ *        steps 4-7): complete the handshake, TOFU-pin the server static key,
+ *        send Noise message 3 (XXpsk2), and queue the encrypted HELLO as the
+ *        first Noise transport message.
+ */
+static esp_err_t handle_noise_shake_response(hm_protocol_ctx_t *ctx,
+                                             const cJSON *payload,
+                                             char **reply_out)
+{
+    const cJSON *noise = cJSON_GetObjectItemCaseSensitive(payload, "noise");
+    const char *msg_hex = NULL;
+    if (cJSON_IsObject(noise)) {
+        const cJSON *msg_item = cJSON_GetObjectItemCaseSensitive(noise, "msg");
+        if (cJSON_IsString(msg_item)) {
+            msg_hex = msg_item->valuestring;
+        }
+    }
+    if (!msg_hex) {
+        ESP_LOGE(TAG, "Malformed Noise HANDSHAKE envelope");
+        return ESP_ERR_INVALID_RESPONSE;
+    }
+
+    size_t hex_len = strlen(msg_hex);
+    if (hex_len % 2 != 0 || hex_len > 2 * 512) {
+        return ESP_ERR_INVALID_RESPONSE;
+    }
+    uint8_t msg[512];
+    size_t msg_len = hex_len / 2;
+    for (size_t i = 0; i < msg_len; i++) {
+        unsigned int v;
+        if (sscanf(msg_hex + 2 * i, "%2x", &v) != 1) {
+            return ESP_ERR_INVALID_RESPONSE;
+        }
+        msg[i] = (uint8_t)v;
+    }
+
+    uint8_t noise_payload[256];
+    size_t noise_payload_len = 0;
+    esp_err_t err = hm_noise_read_message(&ctx->noise, msg, msg_len,
+                                          noise_payload, sizeof(noise_payload) - 1,
+                                          &noise_payload_len);
+    if (err != ESP_OK) {
+        /* Wrong PSK / tampered negotiation / wrong static key — fatal. */
+        ESP_LOGE(TAG, "Noise handshake FAILED — rejecting connection");
+        return err;
+    }
+
+    /* TOFU-then-pin the server static key (§3.4.5). */
+    if (ctx->noise.has_rs) {
+        if (ctx->has_server_static_key &&
+            memcmp(ctx->noise.rs, ctx->server_static_key, HM_NOISE_KEY_SIZE) != 0) {
+            ESP_LOGE(TAG, "Server Noise static key CHANGED — possible "
+                          "man-in-the-middle, aborting");
+            return ESP_ERR_INVALID_STATE;
+        }
+        if (!ctx->has_server_static_key) {
+            memcpy(ctx->server_static_key, ctx->noise.rs, HM_NOISE_KEY_SIZE);
+            ctx->has_server_static_key = true;
+        }
+    }
+
+    /* Server's (encrypted) payload carries its selected encoding. */
+    noise_payload[noise_payload_len] = '\0';
+    cJSON *selection = cJSON_Parse((const char *)noise_payload);
+    if (selection) {
+        const char *enc = json_get_string(selection, "encoding");
+        hm_encoding_t server_enc;
+        if (enc && hm_encoding_parse(enc, &server_enc) == ESP_OK) {
+            ctx->crypto.encoding = server_enc;
+        }
+        cJSON_Delete(selection);
+    }
+
+    /* XXpsk2 message 3: s, se (empty payload). */
+    if (!ctx->noise.finished) {
+        uint8_t msg3[128];
+        size_t msg3_len = 0;
+        err = hm_noise_write_message(&ctx->noise, NULL, 0,
+                                     msg3, sizeof(msg3), &msg3_len);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to write Noise message 3");
+            return err;
+        }
+        *reply_out = build_noise_envelope(NULL, NULL, msg3, msg3_len);
+        if (!*reply_out) {
+            return ESP_ERR_NO_MEM;
+        }
+    }
+    if (!ctx->noise.finished) {
+        ESP_LOGE(TAG, "Noise handshake did not complete");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    /* First Noise transport message: the encrypted HELLO (§3.4.3 step 7). */
+    cJSON *hello = cJSON_CreateObject();
+    if (!hello) {
+        return ESP_ERR_NO_MEM;
+    }
+    cJSON_AddStringToObject(hello, "pubkey", "");
+    cJSON *session = cJSON_AddObjectToObject(hello, "session");
+    cJSON_AddStringToObject(session, "session_id", ctx->session_id);
+    cJSON_AddStringToObject(hello, "site_id", ctx->site_id ? ctx->site_id : "unknown");
+
+    char envelope[2048];
+    err = hm_protocol_build_envelope("hello", hello, envelope, sizeof(envelope));
+    cJSON_Delete(hello);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    ctx->use_noise = true; /* transport CipherStates take over from here */
+    size_t env_len = strlen(envelope);
+    uint8_t *frame = (uint8_t *)malloc(env_len + 1 + HM_NOISE_TAG_SIZE);
+    if (!frame) {
+        return ESP_ERR_NO_MEM;
+    }
+    size_t frame_len = 0;
+    err = hm_protocol_noise_encrypt_frame(ctx, (const uint8_t *)envelope, env_len,
+                                          false, frame,
+                                          env_len + 1 + HM_NOISE_TAG_SIZE, &frame_len);
+    if (err != ESP_OK) {
+        free(frame);
+        return err;
+    }
+    free(ctx->pending_bin);
+    ctx->pending_bin = frame;
+    ctx->pending_bin_len = frame_len;
+
+    ctx->state = HM_STATE_READY;
+    ESP_LOGI(TAG, "Protocol v3 Noise session established, state=READY");
+    return ESP_OK;
+}
+
+esp_err_t hm_protocol_noise_encrypt_frame(hm_protocol_ctx_t *ctx,
+                                          const uint8_t *payload, size_t len,
+                                          bool is_binary,
+                                          uint8_t *out, size_t out_sz,
+                                          size_t *out_len)
+{
+    if (!ctx->use_noise) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    uint8_t *pt = (uint8_t *)malloc(len + 1);
+    if (!pt) {
+        return ESP_ERR_NO_MEM;
+    }
+    pt[0] = is_binary ? 0x01 : 0x00; /* v3 frame marker */
+    memcpy(pt + 1, payload, len);
+    esp_err_t err = hm_noise_encrypt(&ctx->noise, pt, len + 1,
+                                     out, out_sz, out_len);
+    free(pt);
+    return err;
+}
+
+esp_err_t hm_protocol_noise_decrypt_frame(hm_protocol_ctx_t *ctx,
+                                          const uint8_t *frame, size_t frame_len,
+                                          uint8_t *out, size_t out_sz,
+                                          size_t *out_len, bool *is_binary)
+{
+    if (!ctx->use_noise) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (frame_len < 1 + HM_NOISE_TAG_SIZE) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+    uint8_t *pt = (uint8_t *)malloc(frame_len);
+    if (!pt) {
+        return ESP_ERR_NO_MEM;
+    }
+    size_t pt_len = 0;
+    esp_err_t err = hm_noise_decrypt(&ctx->noise, frame, frame_len,
+                                     pt, frame_len, &pt_len);
+    if (err != ESP_OK || pt_len < 1) {
+        free(pt);
+        return (err != ESP_OK) ? err : ESP_ERR_INVALID_RESPONSE;
+    }
+    if (pt[0] != 0x00 && pt[0] != 0x01) {
+        ESP_LOGE(TAG, "Unknown v3 frame marker: 0x%02x", pt[0]);
+        free(pt);
+        return ESP_ERR_INVALID_RESPONSE;
+    }
+    *is_binary = (pt[0] == 0x01);
+    if (pt_len - 1 > out_sz) {
+        free(pt);
+        return ESP_ERR_INVALID_SIZE;
+    }
+    memcpy(out, pt + 1, pt_len - 1);
+    *out_len = pt_len - 1;
+    free(pt);
     return ESP_OK;
 }
 
@@ -341,6 +913,14 @@ static esp_err_t handle_shake_request(hm_protocol_ctx_t *ctx, const cJSON *paylo
     if (!handshake) {
         ESP_LOGE(TAG, "Expected handshake:true in SHAKE");
         return ESP_ERR_INVALID_STATE;
+    }
+
+    /* Protocol v3 (HIVEMIND-WIRE-1 §2): when the server advertises v3 with
+     * Noise parameters and a PSK is provisioned, run the Noise handshake;
+     * otherwise fall through to the legacy (v0-v2) hsub handshake. */
+    hm_noise_pattern_t pattern;
+    if (select_noise(ctx, payload, &pattern)) {
+        return start_noise_handshake(ctx, pattern, payload, reply_out);
     }
 
     /* Generate client hsub */
@@ -515,6 +1095,15 @@ esp_err_t hm_protocol_handle_message(hm_protocol_ctx_t *ctx,
             err = ESP_ERR_INVALID_STATE;
         } else {
             err = handle_shake_response(ctx, payload ? payload : root, reply_out);
+        }
+        break;
+
+    case HM_STATE_NOISE_HANDSHAKE_SENT:
+        if (msg_type != HM_MSG_HANDSHAKE) {
+            ESP_LOGE(TAG, "Expected SHAKE in NOISE_HANDSHAKE_SENT state, got %s", type_str);
+            err = ESP_ERR_INVALID_STATE;
+        } else {
+            err = handle_noise_shake_response(ctx, payload ? payload : root, reply_out);
         }
         break;
 
