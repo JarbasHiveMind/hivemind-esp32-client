@@ -21,7 +21,7 @@ jobs:
     name: Host unit tests (native)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install build tooling
         run: |
@@ -62,7 +62,7 @@ jobs:
           - { path: "examples/mic_satellite",       target: "esp32" }
           - { path: "examples/voice_pe_satellite",  target: "esp32s3" }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: idf.py build
         uses: espressif/esp-idf-ci-action@v1
