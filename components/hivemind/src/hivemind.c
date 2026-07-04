@@ -27,6 +27,13 @@ struct hm_client {
     uint16_t port;
     uint32_t reconnect_ms;
 
+    /* Protocol v3 (Noise) provisioning */
+    bool has_psk;
+    uint8_t psk[HM_NOISE_KEY_SIZE];
+    uint8_t noise_static_key[HM_NOISE_KEY_SIZE];
+    bool has_server_noise_key;
+    uint8_t server_noise_key[HM_NOISE_KEY_SIZE];
+
     /* Protocol state machine */
     hm_protocol_ctx_t protocol;
 
@@ -92,6 +99,115 @@ static void start_reconnect_timer(hm_client_t *client)
     }
 }
 
+/* --------------- Message dispatch --------------- */
+
+/**
+ * @brief Dispatch a parsed envelope to the bus callback (takes ownership of
+ *        payload/context).
+ */
+static void dispatch_message(hm_client_t *client, hm_msg_type_t msg_type,
+                             cJSON *payload, cJSON *context)
+{
+    if (client->bus_cb) {
+        const char *type_str = hm_msg_type_str(msg_type);
+
+        /* For BUS messages, extract the inner type and data */
+        if (msg_type == HM_MSG_BUS && payload) {
+            const cJSON *inner_type = cJSON_GetObjectItemCaseSensitive(payload, "type");
+            const cJSON *inner_data = cJSON_GetObjectItemCaseSensitive(payload, "data");
+            if (cJSON_IsString(inner_type)) {
+                type_str = inner_type->valuestring;
+            }
+            client->bus_cb(client, type_str,
+                           inner_data ? (cJSON *)inner_data : payload,
+                           context);
+        } else {
+            client->bus_cb(client, type_str, payload, context);
+        }
+    }
+
+    cJSON_Delete(payload);
+    cJSON_Delete(context);
+}
+
+/**
+ * @brief Dispatch a decrypted WIRE-1 binary frame.
+ */
+static void dispatch_binary_payload(hm_client_t *client,
+                                    const uint8_t *pt, size_t pt_len)
+{
+    hm_binary_frame_t frame;
+    esp_err_t err = hm_binary_decode(pt, pt_len, &frame);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Binary decode failed: %s", esp_err_to_name(err));
+        return;
+    }
+
+    if (frame.msg_type == HM_MSG_BINARY && client->binary_cb) {
+        client->binary_cb(client, frame.bin_type,
+                          frame.payload, frame.payload_len);
+    } else if (client->bus_cb && frame.metadata && frame.metadata_len > 0) {
+        /* Parse metadata as JSON bus message */
+        char *meta_str = (char *)malloc(frame.metadata_len + 1);
+        if (meta_str) {
+            memcpy(meta_str, frame.metadata, frame.metadata_len);
+            meta_str[frame.metadata_len] = '\0';
+            cJSON *meta = cJSON_Parse(meta_str);
+            free(meta_str);
+            if (meta) {
+                const char *type_str = hm_msg_type_str(frame.msg_type);
+                client->bus_cb(client, type_str, meta, NULL);
+                cJSON_Delete(meta);
+            }
+        }
+    }
+}
+
+/**
+ * @brief Decrypt and dispatch one v3 Noise transport frame.
+ */
+static void handle_noise_frame(hm_client_t *client,
+                               const uint8_t *data, size_t len)
+{
+    uint8_t *pt = (uint8_t *)malloc(len + 1);
+    if (!pt) {
+        ESP_LOGE(TAG, "OOM decrypting Noise frame");
+        return;
+    }
+    size_t pt_len = 0;
+    bool is_binary = false;
+    esp_err_t err = hm_protocol_noise_decrypt_frame(&client->protocol,
+                                                    data, len,
+                                                    pt, len, &pt_len,
+                                                    &is_binary);
+    if (err != ESP_OK) {
+        /* Tampering/replay/reordering — fatal for the session (§3.4.5). */
+        ESP_LOGE(TAG, "Noise transport decrypt failed: %s — closing session",
+                 esp_err_to_name(err));
+        free(pt);
+        hm_client_disconnect(client);
+        start_reconnect_timer(client);
+        return;
+    }
+
+    if (is_binary) {
+        dispatch_binary_payload(client, pt, pt_len);
+    } else {
+        pt[pt_len] = '\0';
+        hm_msg_type_t msg_type;
+        cJSON *payload = NULL;
+        cJSON *context = NULL;
+        err = hm_protocol_parse_envelope((const char *)pt, &msg_type,
+                                         &payload, &context);
+        if (err == ESP_OK) {
+            dispatch_message(client, msg_type, payload, context);
+        } else {
+            ESP_LOGE(TAG, "Failed to parse Noise JSON frame");
+        }
+    }
+    free(pt);
+}
+
 /* --------------- WebSocket event handler --------------- */
 
 static void ws_event_handler(void *handler_args, esp_event_base_t base,
@@ -137,13 +253,38 @@ static void ws_event_handler(void *handler_args, esp_event_base_t base,
                     free(reply);
                 }
 
+                /* v3: the encrypted HELLO rides as the first Noise transport
+                 * message (binary), after Noise message 3 (the text reply) */
+                if (client->protocol.pending_bin) {
+                    esp_websocket_client_send_bin(client->ws_handle,
+                                                   (const char *)client->protocol.pending_bin,
+                                                   client->protocol.pending_bin_len,
+                                                   portMAX_DELAY);
+                    free(client->protocol.pending_bin);
+                    client->protocol.pending_bin = NULL;
+                    client->protocol.pending_bin_len = 0;
+                }
+
                 /* If we just became READY, notify */
                 if (client->protocol.state == HM_STATE_READY && old_state != HM_STATE_READY) {
+                    /* v3: keep the TOFU-pinned server static key across
+                     * reconnects (HIVEMIND-CRYPTO-1 §3.4.5) */
+                    if (client->protocol.has_server_static_key &&
+                        !client->has_server_noise_key) {
+                        memcpy(client->server_noise_key,
+                               client->protocol.server_static_key,
+                               HM_NOISE_KEY_SIZE);
+                        client->has_server_noise_key = true;
+                    }
                     ESP_LOGI(TAG, "Handshake complete, READY");
                     if (client->state_cb) {
                         client->state_cb(client, HM_STATE_READY);
                     }
                 }
+            } else if (client->protocol.use_noise) {
+                /* v3: after Split() only Noise transport (binary) messages
+                 * are valid (HIVEMIND-CRYPTO-1 §3.4.5) */
+                ESP_LOGW(TAG, "Unexpected text frame on v3 session, ignoring");
             } else {
                 /* READY state — decrypt and dispatch */
                 hm_msg_type_t msg_type;
@@ -158,31 +299,19 @@ static void ws_event_handler(void *handler_args, esp_event_base_t base,
                     break;
                 }
 
-                if (client->bus_cb) {
-                    const char *type_str = hm_msg_type_str(msg_type);
-
-                    /* For BUS messages, extract the inner type and data */
-                    if (msg_type == HM_MSG_BUS && payload) {
-                        const cJSON *inner_type = cJSON_GetObjectItemCaseSensitive(payload, "type");
-                        const cJSON *inner_data = cJSON_GetObjectItemCaseSensitive(payload, "data");
-                        if (cJSON_IsString(inner_type)) {
-                            type_str = inner_type->valuestring;
-                        }
-                        client->bus_cb(client, type_str,
-                                       inner_data ? (cJSON *)inner_data : payload,
-                                       context);
-                    } else {
-                        client->bus_cb(client, type_str, payload, context);
-                    }
-                }
-
-                cJSON_Delete(payload);
-                cJSON_Delete(context);
+                dispatch_message(client, msg_type, payload, context);
             }
         } else if (data->op_code == 0x02) {
             /* Binary frame */
             if (client->protocol.state != HM_STATE_READY) {
                 ESP_LOGW(TAG, "Binary frame received before READY, ignoring");
+                break;
+            }
+
+            if (client->protocol.use_noise) {
+                /* v3: Noise transport message */
+                handle_noise_frame(client, (const uint8_t *)data->data_ptr,
+                                   data->data_len);
                 break;
             }
 
@@ -204,34 +333,7 @@ static void ws_event_handler(void *handler_args, esp_event_base_t base,
                 break;
             }
 
-            /* Decode binary frame */
-            hm_binary_frame_t frame;
-            err = hm_binary_decode(pt_buf, pt_len, &frame);
-            if (err != ESP_OK) {
-                ESP_LOGE(TAG, "Binary decode failed: %s", esp_err_to_name(err));
-                free(pt_buf);
-                break;
-            }
-
-            if (frame.msg_type == HM_MSG_BINARY && client->binary_cb) {
-                client->binary_cb(client, frame.bin_type,
-                                  frame.payload, frame.payload_len);
-            } else if (client->bus_cb && frame.metadata && frame.metadata_len > 0) {
-                /* Parse metadata as JSON bus message */
-                char *meta_str = (char *)malloc(frame.metadata_len + 1);
-                if (meta_str) {
-                    memcpy(meta_str, frame.metadata, frame.metadata_len);
-                    meta_str[frame.metadata_len] = '\0';
-                    cJSON *meta = cJSON_Parse(meta_str);
-                    free(meta_str);
-                    if (meta) {
-                        const char *type_str = hm_msg_type_str(frame.msg_type);
-                        client->bus_cb(client, type_str, meta, NULL);
-                        cJSON_Delete(meta);
-                    }
-                }
-            }
-
+            dispatch_binary_payload(client, pt_buf, pt_len);
             free(pt_buf);
         }
         break;
@@ -277,9 +379,46 @@ esp_err_t hm_client_init(hm_client_t **client_out, const hm_config_t *config)
         return ESP_ERR_NO_MEM;
     }
 
+    /* Protocol v3 provisioning (optional) */
+    if (config->noise_psk_hex) {
+        if (hm_noise_key_from_hex(config->noise_psk_hex, client->psk) != ESP_OK) {
+            ESP_LOGE(TAG, "Invalid noise_psk_hex (need 64 hex chars)");
+            hm_client_free(client);
+            return ESP_ERR_INVALID_ARG;
+        }
+        client->has_psk = true;
+        if (config->noise_static_key_hex) {
+            if (hm_noise_key_from_hex(config->noise_static_key_hex,
+                                      client->noise_static_key) != ESP_OK) {
+                ESP_LOGE(TAG, "Invalid noise_static_key_hex");
+                hm_client_free(client);
+                return ESP_ERR_INVALID_ARG;
+            }
+        } else {
+            /* Fresh static key per client lifetime; provision one in config
+             * for a TOFU pin that survives reboots. */
+            esp_fill_random(client->noise_static_key, HM_NOISE_KEY_SIZE);
+        }
+        if (config->noise_server_key_hex) {
+            if (hm_noise_key_from_hex(config->noise_server_key_hex,
+                                      client->server_noise_key) != ESP_OK) {
+                ESP_LOGE(TAG, "Invalid noise_server_key_hex");
+                hm_client_free(client);
+                return ESP_ERR_INVALID_ARG;
+            }
+            client->has_server_noise_key = true;
+        }
+    }
+
     /* Initialize protocol */
     hm_protocol_init(&client->protocol, client->password,
                       client->site_id, config->preferred_cipher);
+    if (client->has_psk) {
+        hm_protocol_set_v3(&client->protocol, client->psk,
+                           client->noise_static_key,
+                           client->has_server_noise_key ? client->server_noise_key
+                                                        : NULL);
+    }
 
     /* Create reconnect timer */
     esp_timer_create_args_t timer_args = {
@@ -312,6 +451,8 @@ void hm_client_free(hm_client_t *client)
         client->reconnect_timer = NULL;
     }
 
+    hm_protocol_deinit(&client->protocol);
+
     free(client->host);
     free(client->username);
     free(client->access_key);
@@ -343,8 +484,15 @@ esp_err_t hm_client_connect(hm_client_t *client)
     }
 
     /* Re-init protocol for fresh handshake */
+    hm_protocol_deinit(&client->protocol);
     hm_protocol_init(&client->protocol, client->password,
                       client->site_id, client->protocol.preferred_cipher);
+    if (client->has_psk) {
+        hm_protocol_set_v3(&client->protocol, client->psk,
+                           client->noise_static_key,
+                           client->has_server_noise_key ? client->server_noise_key
+                                                        : NULL);
+    }
 
     /* Base64 encode "username:access_key" for authorization */
     char credentials[256];
@@ -471,18 +619,55 @@ esp_err_t hm_send_bus_message(hm_client_t *client, const char *type,
         cJSON_AddObjectToObject(bus_payload, "context");
     }
 
+    esp_err_t err;
+    int sent;
+    if (client->protocol.use_noise) {
+        /* v3: JSON envelope inside a Noise transport frame (binary) */
+        char envelope[8192];
+        err = hm_protocol_build_envelope("BUS", bus_payload,
+                                         envelope, sizeof(envelope));
+        cJSON_Delete(bus_payload);
+        if (err != ESP_OK) {
+            return err;
+        }
+        size_t env_len = strlen(envelope);
+        size_t frame_sz = env_len + 1 + HM_NOISE_TAG_SIZE;
+        uint8_t *frame = (uint8_t *)malloc(frame_sz);
+        if (!frame) {
+            return ESP_ERR_NO_MEM;
+        }
+        size_t frame_len = 0;
+        err = hm_protocol_noise_encrypt_frame(&client->protocol,
+                                              (const uint8_t *)envelope, env_len,
+                                              false, frame, frame_sz, &frame_len);
+        if (err != ESP_OK) {
+            free(frame);
+            return err;
+        }
+        sent = esp_websocket_client_send_bin(client->ws_handle,
+                                              (const char *)frame, frame_len,
+                                              portMAX_DELAY);
+        free(frame);
+        if (sent < 0) {
+            ESP_LOGE(TAG, "Failed to send Noise frame");
+            return ESP_FAIL;
+        }
+        ESP_LOGD(TAG, "Sent bus message (v3): %s", type);
+        return ESP_OK;
+    }
+
     char encrypted[8192];
-    esp_err_t err = hm_protocol_encrypt_message(&client->protocol, "BUS",
-                                                  bus_payload, encrypted, sizeof(encrypted));
+    err = hm_protocol_encrypt_message(&client->protocol, "BUS",
+                                       bus_payload, encrypted, sizeof(encrypted));
     cJSON_Delete(bus_payload);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to encrypt bus message: %s", esp_err_to_name(err));
         return err;
     }
 
-    int sent = esp_websocket_client_send_text(client->ws_handle,
-                                               encrypted, strlen(encrypted),
-                                               portMAX_DELAY);
+    sent = esp_websocket_client_send_text(client->ws_handle,
+                                           encrypted, strlen(encrypted),
+                                           portMAX_DELAY);
     if (sent < 0) {
         ESP_LOGE(TAG, "Failed to send text frame");
         return ESP_FAIL;
@@ -525,9 +710,16 @@ esp_err_t hm_send_binary(hm_client_t *client, hm_bin_type_t bin_type,
     }
 
     size_t enc_len = 0;
-    err = hm_crypto_encrypt_binary(&client->protocol.crypto,
-                                    frame_buf, frame_len,
-                                    enc_buf, enc_sz, &enc_len);
+    if (client->protocol.use_noise) {
+        /* v3: WIRE-1 frame inside a Noise transport frame */
+        err = hm_protocol_noise_encrypt_frame(&client->protocol,
+                                              frame_buf, frame_len, true,
+                                              enc_buf, enc_sz, &enc_len);
+    } else {
+        err = hm_crypto_encrypt_binary(&client->protocol.crypto,
+                                       frame_buf, frame_len,
+                                       enc_buf, enc_sz, &enc_len);
+    }
     free(frame_buf);
     if (err != ESP_OK) {
         free(enc_buf);

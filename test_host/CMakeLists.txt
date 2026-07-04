@@ -66,11 +66,13 @@ add_executable(test_host_runner
     main.c
     ../test/test_crypto.c
     ../test/test_binary.c
+    ../test/test_noise.c
     ../test/test_protocol.c
     ../test/test_vad_simple.c
     ../test/test_wav_header.c
     ../test/test_audio_util.c
     ../components/hivemind/src/hivemind_crypto.c
+    ../components/hivemind/src/hivemind_noise.c
     ../components/hivemind/src/hivemind_binary.c
     ../components/hivemind/src/hivemind_protocol.c
     ../examples/voice_pe_satellite/main/vad_simple.c
@@ -125,6 +127,9 @@ set_source_files_properties(../test/test_crypto.c PROPERTIES
 )
 set_source_files_properties(../test/test_protocol.c PROPERTIES
     COMPILE_DEFINITIONS "TEST_FILE_ID=proto"
+)
+set_source_files_properties(../test/test_noise.c PROPERTIES
+    COMPILE_DEFINITIONS "TEST_FILE_ID=noise"
 )
 set_source_files_properties(../test/test_vad_simple.c PROPERTIES
     COMPILE_DEFINITIONS "TEST_FILE_ID=vad"
