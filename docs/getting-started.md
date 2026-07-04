@@ -14,7 +14,7 @@ ESP32 (this component)  ⇄  hivemind-core hub  ⇄  OVOS skills
 
 ### Build host
 
-- **ESP-IDF 5.0+**. Install it and source the environment:
+- **ESP-IDF 5.1+** (CI builds against v5.4). Install it and source the environment:
 
   ```bash
   git clone https://github.com/espressif/esp-idf.git

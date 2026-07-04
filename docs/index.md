@@ -16,8 +16,10 @@ WebSocket events -> Protocol FSM -> Crypto layer -> Application callbacks
 ## Dependencies
 
 - **mbedTLS** (ESP-IDF built-in, HW-accelerated AES on ESP32)
-- **cJSON** (ESP-IDF built-in)
-- **esp_websocket_client** (ESP-IDF component)
+- **cJSON** — the bundled `json` component (ESP-IDF built-in)
+- **espressif/esp_websocket_client** — managed component, declared in
+  `components/hivemind/idf_component.yml` and fetched by the IDF component manager
+  (no longer bundled in ESP-IDF 5.x)
 
 ## Public API
 

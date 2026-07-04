@@ -1,69 +1,61 @@
-cmake_minimum_required(VERSION 3.10)
-set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "Allow older CMake in FetchContent deps")
+cmake_minimum_required(VERSION 3.16)
+# Some pinned FetchContent deps still declare a pre-3.10 minimum; allow them
+# to configure under modern CMake without each emitting a hard error.
+if(POLICY CMP0048)
+    cmake_policy(SET CMP0048 NEW)
+endif()
+set(CMAKE_POLICY_VERSION_MINIMUM 3.10 CACHE STRING "Floor for FetchContent deps that declare an older minimum")
 project(hivemind_host_tests C)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # ================================================================
-# Find required dependencies
-# ================================================================
-
-# Try to find MbedTLS via standard CMake config or system paths
-find_package(MbedTLS QUIET CONFIG)
-
-# If not found via config, try finding headers manually
-if(NOT MbedTLS_FOUND AND NOT mbedtls_FOUND)
-    message(STATUS "MbedTLS not found via CMake config, trying manual search...")
-
-    # Check common installation paths
-    find_path(MBEDTLS_INCLUDE_DIR
-        NAMES mbedtls/sha256.h
-        PATHS /usr/include /usr/local/include /opt/homebrew/include
-        NO_DEFAULT_PATH
-    )
-
-    find_library(MBEDCRYPTO_LIB
-        NAMES mbedcrypto
-        PATHS /usr/lib /usr/local/lib /opt/homebrew/lib /usr/lib/x86_64-linux-gnu
-        NO_DEFAULT_PATH
-    )
-
-    if(MBEDTLS_INCLUDE_DIR AND MBEDCRYPTO_LIB)
-        message(STATUS "Found mbedTLS: ${MBEDTLS_INCLUDE_DIR}")
-        set(MbedTLS_FOUND TRUE)
-        add_library(MbedTLS::mbedcrypto UNKNOWN IMPORTED)
-        set_target_properties(MbedTLS::mbedcrypto PROPERTIES
-            IMPORTED_LOCATION "${MBEDCRYPTO_LIB}"
-            INTERFACE_INCLUDE_DIRECTORIES "${MBEDTLS_INCLUDE_DIR}"
-        )
-    else()
-        message(FATAL_ERROR
-            "MbedTLS not found. Install libmbedtls-dev (Ubuntu/Debian) or "
-            "libmbedtls-devel (Fedora/RHEL), or set CMAKE_PREFIX_PATH to point to MbedTLS installation."
-        )
-    endif()
-endif()
-
-# ================================================================
-# Download and prepare Unity framework
+# Dependencies — fetched from source and pinned.
+#
+# We build mbedTLS from source (rather than the distro's libmbedtls-dev)
+# so the host tests link against the SAME mbedTLS major.minor that ESP-IDF
+# bundles (3.6.x). This guarantees API parity (e.g. the modern
+# mbedtls_pkcs5_pbkdf2_hmac_ext symbol, which several distro builds omit)
+# and makes the build reproducible on any host with no system mbedTLS.
 # ================================================================
 
 include(FetchContent)
+
+# --- mbedTLS (crypto only) — pinned to the ESP-IDF 5.x LTS line ---------
+set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(ENABLE_TESTING  OFF CACHE BOOL "" FORCE)
+set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(mbedtls
+    GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
+    GIT_TAG v3.6.6
+    GIT_SHALLOW TRUE
+    GIT_SUBMODULES_RECURSE TRUE
+)
+
 FetchContent_Declare(unity
     GIT_REPOSITORY https://github.com/ThrowTheSwitch/Unity.git
     GIT_TAG v2.5.2
+    GIT_SHALLOW TRUE
 )
+# cJSON: we compile cJSON.c directly into the test runner rather than
+# building its library/target. SOURCE_SUBDIR points at a directory with no
+# CMakeLists.txt so MakeAvailable downloads the source without configuring
+# cJSON's own build (whose options would clash with ours).
 FetchContent_Declare(cjson
     GIT_REPOSITORY https://github.com/DaveGamble/cJSON.git
     GIT_TAG v1.7.18
+    GIT_SHALLOW TRUE
+    SOURCE_SUBDIR do-not-configure
 )
-FetchContent_MakeAvailable(unity)
-# Populate cJSON source only (don't build — its CMakeLists conflicts with Unity)
-FetchContent_GetProperties(cjson)
-if(NOT cjson_POPULATED)
-    FetchContent_Populate(cjson)
+
+FetchContent_MakeAvailable(mbedtls unity cjson)
+
+# mbedTLS exports the imported target `MbedTLS::mbedcrypto`.
+if(NOT TARGET MbedTLS::mbedcrypto)
+    message(FATAL_ERROR "mbedTLS build did not provide MbedTLS::mbedcrypto target")
 endif()
+
 set(UNITY_SOURCE_DIR ${unity_SOURCE_DIR})
 
 # ================================================================

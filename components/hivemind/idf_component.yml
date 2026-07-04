@@ -1,0 +1,23 @@
+version: "0.1.0"
+description: >-
+  HiveMind satellite client for ESP32 — connects an ESP32 to a hivemind-core hub
+  as an encrypted WebSocket satellite (HiveMind Protocol V1: handshake, PBKDF2 key
+  derivation, AES-256-GCM / ChaCha20-Poly1305 AEAD, bus + binary audio transport).
+url: "https://github.com/JarbasHiveMind/hivemind-esp32-client"
+repository: "https://github.com/JarbasHiveMind/hivemind-esp32-client.git"
+documentation: "https://github.com/JarbasHiveMind/hivemind-esp32-client/tree/dev/docs"
+issues: "https://github.com/JarbasHiveMind/hivemind-esp32-client/issues"
+license: "Apache-2.0"
+tags:
+  - hivemind
+  - ovos
+  - voice
+  - satellite
+  - websocket
+  - encryption
+
+dependencies:
+  # esp_websocket_client is a managed component (not bundled in ESP-IDF 5.x).
+  espressif/esp_websocket_client: "^1.2.0"
+  # cJSON is provided by the json component bundled in ESP-IDF.
+  idf: ">=5.1"

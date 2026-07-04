@@ -7,7 +7,9 @@ A: AES-256-GCM and ChaCha20-Poly1305. Negotiated during handshake via `ciphers` 
 A: 10-30 seconds (100,000 iterations, `HM_PBKDF2_ITERATIONS` — `hivemind_crypto.h:31`). One-time cost per connection. AES is HW-accelerated via mbedTLS on ESP32.
 
 **Q: What is the minimum ESP-IDF version?**
-A: ESP-IDF 5.0+. Requires `esp_websocket_client`, mbedTLS, and cJSON components.
+A: ESP-IDF 5.1+ (CI builds against v5.4). It uses the bundled mbedTLS and `json`
+components plus the `espressif/esp_websocket_client` managed component, which the IDF
+component manager fetches automatically from the manifest.
 
 **Q: How do I add this as a component?**
 A: Copy `components/hivemind/` into your project's `components/` directory, or use the ESP Component Registry.
