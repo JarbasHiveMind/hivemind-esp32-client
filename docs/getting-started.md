@@ -4,7 +4,7 @@ From a bare ESP32 to a HiveMind satellite that exchanges messages with a hub.
 
 ## What this component does
 
-A HiveMind **satellite** captures input on an edge device and forwards it to a central **hub**. The hub runs the AI reasoning — intent parsing, skills, text-to-speech — and sends responses back. This ESP-IDF component implements the satellite side in C: the encrypted HiveMind handshake and bus/binary messaging, small enough to run on an ESP32.
+A HiveMind **satellite** captures input on an edge device and forwards it to a central **hub**. The hub runs the AI reasoning (intent parsing, skills, text-to-speech) and sends responses back. This ESP-IDF component implements the satellite side in C: the encrypted HiveMind handshake and bus/binary messaging, small enough to run on an ESP32.
 
 ```
 ESP32 (this component)  ⇄  hivemind-core hub  ⇄  OVOS skills
@@ -31,7 +31,7 @@ ESP32 (this component)  ⇄  hivemind-core hub  ⇄  OVOS skills
 - A running HiveMind hub ([hivemind-core](https://github.com/JarbasHiveMind/HiveMind-core)) reachable at a known address and port (default `5678`).
 - A client credential (username, access key, password) registered on the hub.
 
-## Step 1 — Stand up a hub
+## Step 1: Stand up a hub
 
 On a desktop or home server:
 
@@ -42,16 +42,16 @@ hivemind-core listen
 
 The hub listens on port `5678` by default.
 
-## Step 2 — Register the satellite
+## Step 2: Register the satellite
 
 ```bash
 hivemind-core add-client --name esp32 \
   --access-key "your-access-key" --password "your-password"
 ```
 
-Keep the access key and password — the device authenticates with them. List clients with `hivemind-core list-clients`.
+Keep the access key and password. The device authenticates with them. List clients with `hivemind-core list-clients`.
 
-## Step 3 — Build and flash an example
+## Step 3: Build and flash an example
 
 The component lives in `components/hivemind/`; the examples already reference it.
 
@@ -66,7 +66,7 @@ idf.py flash -p /dev/ttyUSB0     # your serial port
 idf.py monitor
 ```
 
-## Step 4 — Confirm it connects
+## Step 4: Confirm it connects
 
 The monitor output shows the Wi-Fi IP, the connection, and the round-trip:
 
@@ -76,7 +76,7 @@ I (9880) text_sat: Connected! Sending utterance...
 I (10120) text_sat: TTS response: It is half past three.
 ```
 
-The first connection includes PBKDF2 key derivation, which takes 10-30 s on-device; reconnects are fast.
+The first connection includes PBKDF2 key derivation, which takes 10-30 s on-device. Reconnects are fast.
 
 ## Using the component in your own app
 
@@ -95,3 +95,6 @@ See [examples.md](examples.md) for full snippets.
 - [Architecture and full API](index.md)
 - [Examples](examples.md)
 - [Integration testing against a live hub](integration-testing.md)
+
+---
+[Home](../README.md) · [Configuration →](configuration.md)
