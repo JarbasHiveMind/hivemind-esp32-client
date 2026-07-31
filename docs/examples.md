@@ -158,16 +158,16 @@ Configurable satellite for the **Home Assistant Voice Preview Edition** board (E
 | OVOS HTTP | GET from OVOS TTS server |
 
 ### Key Files
-- `main.c` — mode dispatch, HiveMind callbacks, two task variants (VAD-only / wake word)
-- `speech_detect.c/h` — ESP-SR AFE wrapper (WakeNet + VAD)
-- `vad_simple.c/h` — energy-based VAD for mic-satellite mode
-- `ovos_http.c/h` — OVOS STT/TTS HTTP client
-- `voice_pe_hw.h` — pin definitions + all mode/state enums
-- `codec_init.c` — I2C bus, XMOS reset, AIC3204 DAC register sequence
-- `i2s_mic.c` — 32-bit stereo → 16-bit mono extraction
-- `i2s_spk.c` — ring buffer + 16k→48k upsample + stereo output
-- `led_ring.c` — 7-state solid colors
-- `button.c` — GPIO0 push-to-talk override + GPIO3 mute
+- `main.c`: mode dispatch, HiveMind callbacks, two task variants (VAD-only / wake word)
+- `speech_detect.c/h`: ESP-SR AFE wrapper (WakeNet + VAD)
+- `vad_simple.c/h`: energy-based VAD for mic-satellite mode
+- `ovos_http.c/h`: OVOS STT/TTS HTTP client
+- `voice_pe_hw.h`: pin definitions + all mode/state enums
+- `codec_init.c`: I2C bus, XMOS reset, AIC3204 DAC register sequence
+- `i2s_mic.c`: 32-bit stereo to 16-bit mono extraction
+- `i2s_spk.c`: ring buffer, 16k to 48k upsample, stereo output
+- `led_ring.c`: 7-state solid colors
+- `button.c`: GPIO0 push-to-talk override, GPIO3 mute
 
 ### LED States
 
@@ -190,3 +190,6 @@ idf.py build flash monitor
 ```
 
 **Dependencies**: `espressif/esp-sr ^1.3.0`, `espressif/led_strip ^2.5.0` (auto-fetched via `idf_component.yml`). Requires 16 MB flash with custom partition table.
+
+---
+[← Configuration](configuration.md) · [Home](../README.md) · [Integration Testing →](integration-testing.md)

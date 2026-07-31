@@ -6,35 +6,35 @@ This guide explains how to build and test the HiveMind ESP32 client with a real 
 
 CI (`.github/workflows/tests.yml`) verifies two things automatically:
 
-1. **Host unit tests** — the crypto layer, the binary V1 codec, the protocol
+1. **Host unit tests**: the crypto layer, the binary V1 codec, the protocol
    handshake FSM, and the Voice PE audio helpers are compiled natively and run as
    Unity tests. The crypto/binary tests include cross-platform interop vectors that
    pin the wire format to HiveMind Protocol V1.
-2. **ESP-IDF firmware build** — every example is compiled against a current stable
-   ESP-IDF for its target (`text_satellite`/`mic_satellite` → `esp32`,
-   `voice_pe_satellite` → `esp32s3`). This is a compile/link check of the real
+2. **ESP-IDF firmware build**: every example is compiled against a current stable
+   ESP-IDF for its target (`text_satellite`/`mic_satellite` to `esp32`,
+   `voice_pe_satellite` to `esp32s3`). This is a compile/link check of the real
    firmware, not an execution.
 
-**A full hardware-in-the-loop test against a live hub is NOT run in CI** — it needs
+**A full hardware-in-the-loop test against a live hub is NOT run in CI.** It needs
 real ESP32 hardware, Wi-Fi, and a running `hivemind-core`. Run the scenarios below
 manually on a device when validating an end-to-end change.
 
 ## Prerequisites
 
 ### Host Requirements
-1. **ESP-IDF** — Install v5.0 or later:
+1. **ESP-IDF**: install v5.0 or later:
    ```bash
    git clone https://github.com/espressif/esp-idf.git
    cd esp-idf && ./install.sh && source export.sh
    ```
 
-2. **HiveMind Hub** — Install and run `hivemind-core`:
+2. **HiveMind Hub**: install and run `hivemind-core`:
    ```bash
    pip install hivemind-core
    hivemind-core listen  # Starts hub on localhost:5678
    ```
 
-3. **Hub Credentials** — Register an ESP32 client:
+3. **Hub Credentials**: register an ESP32 client:
    ```bash
    hivemind-core add-client --name "esp32-test"
    # Output:
@@ -235,11 +235,14 @@ CI builds every example with the official ESP-IDF action — see
 
 The scenarios above (connect/handshake, utterance, audio stream, cipher
 negotiation, reconnection) require real hardware and a live hub, so they are run
-manually by developers — they are deliberately not part of CI.
+manually by developers. They are deliberately not part of CI.
 
 ## Next Steps
 
-- **Load testing** — Connect 10+ devices simultaneously, measure hub CPU/memory
-- **Encoding testing** — Verify all 7 encodings (HEX, B64, B32, Z85B, Z85P, B91) work
-- **Error scenarios** — Test graceful handling of hub restart, network partitions
-- **OTA updates** — Stream firmware updates via HiveMind binary channel
+- **Load testing**: connect 10+ devices simultaneously, measure hub CPU/memory
+- **Encoding testing**: verify all 7 encodings (HEX, B64, B32, Z85B, Z85P, B91) work
+- **Error scenarios**: test graceful handling of hub restart, network partitions
+- **OTA updates**: stream firmware updates via HiveMind binary channel
+
+---
+[← Examples](examples.md) · [Home](../README.md)

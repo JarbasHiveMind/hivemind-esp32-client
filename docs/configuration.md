@@ -10,7 +10,7 @@ The client is configured by filling an `hm_config_t` (declared in `components/hi
 | `port` | Hub port. Default `5678`. |
 | `username` | The client name registered on the hub. |
 | `access_key` | Access key from `hivemind-core add-client`. |
-| `password` | Password from `hivemind-core add-client`; used to derive the session key. |
+| `password` | Password from `hivemind-core add-client`, used to derive the session key. |
 | `site_id` | A site identifier reported to the hub (for example `esp32-kitchen`). |
 
 Register a credential on the hub before connecting:
@@ -39,8 +39,8 @@ On ESP32, AES-GCM is hardware-accelerated; ChaCha20-Poly1305 runs in software. T
 
 The bundled examples read Wi-Fi and HiveMind settings from the project configuration rather than hardcoding them:
 
-- **Wi-Fi** — via ESP-IDF's *Example Connection Configuration* menu (the `example_connect()` helper), set with `idf.py menuconfig`.
-- **HiveMind** — `CONFIG_EXAMPLE_HIVEMIND_HOST`, `CONFIG_EXAMPLE_HIVEMIND_KEY`, `CONFIG_EXAMPLE_HIVEMIND_PASSWORD`, and `CONFIG_HIVEMIND_RECONNECT_MS`, also set through `idf.py menuconfig`.
+- **Wi-Fi**: via ESP-IDF's *Example Connection Configuration* menu (the `example_connect()` helper), set with `idf.py menuconfig`.
+- **HiveMind**: `CONFIG_EXAMPLE_HIVEMIND_HOST`, `CONFIG_EXAMPLE_HIVEMIND_KEY`, `CONFIG_EXAMPLE_HIVEMIND_PASSWORD`, and `CONFIG_HIVEMIND_RECONNECT_MS`, also set through `idf.py menuconfig`.
 
 In your own application you may set these fields to string literals, values read from NVS, or any other source.
 
@@ -56,4 +56,7 @@ The session key is derived with PBKDF2-HMAC-SHA256 (100k iterations) from `passw
 
 ## Buffer sizes
 
-Protocol buffers are fixed-size (4096 bytes; `server_pubkey` 512 bytes, `server_peer` / `server_node_id` 128 bytes). Messages larger than the buffer can truncate — stream audio in small chunks rather than single large frames. The WebSocket receive buffer can be raised with `CONFIG_HIVEMIND_WS_BUFFER_SIZE` (see `sdkconfig.defaults`).
+Protocol buffers are fixed-size: 4096 bytes, `server_pubkey` 512 bytes, `server_peer` / `server_node_id` 128 bytes. Messages larger than the buffer can truncate. Stream audio in small chunks rather than single large frames. The WebSocket receive buffer can be raised with `CONFIG_HIVEMIND_WS_BUFFER_SIZE` (see `sdkconfig.defaults`).
+
+---
+[← Getting Started](getting-started.md) · [Home](../README.md) · [Examples →](examples.md)

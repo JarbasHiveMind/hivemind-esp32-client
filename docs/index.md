@@ -9,21 +9,21 @@ WebSocket events -> Protocol FSM -> Crypto layer -> Application callbacks
 ```
 
 1. `esp_websocket_client` delivers frames to the internal WS event handler (`hivemind.c`)
-2. During handshake, frames route through `hm_protocol_handle_message` — `hivemind_protocol.c:75`
-3. In READY state, messages encrypt/decrypt via `hm_crypto_encrypt_json_hex` / `hm_crypto_decrypt_json_hex` — `hivemind_crypto.c`
-4. Binary frames encode/decode via `hm_binary_encode` / `hm_binary_decode` — `hivemind_binary.c`
+2. During handshake, frames route through `hm_protocol_handle_message` (`hivemind_protocol.c:75`)
+3. In READY state, messages encrypt/decrypt via `hm_crypto_encrypt_json_hex` / `hm_crypto_decrypt_json_hex` (`hivemind_crypto.c`)
+4. Binary frames encode/decode via `hm_binary_encode` / `hm_binary_decode` (`hivemind_binary.c`)
 
 ## Dependencies
 
 - **mbedTLS** (ESP-IDF built-in, HW-accelerated AES on ESP32)
-- **cJSON** — the bundled `json` component (ESP-IDF built-in)
-- **espressif/esp_websocket_client** — managed component, declared in
+- **cJSON**: the bundled `json` component (ESP-IDF built-in)
+- **espressif/esp_websocket_client**: managed component, declared in
   `components/hivemind/idf_component.yml` and fetched by the IDF component manager
   (no longer bundled in ESP-IDF 5.x)
 
 ## Public API
 
-### Client lifecycle — `include/hivemind.h`
+### Client lifecycle: `include/hivemind.h`
 
 | Function | Line | Description |
 |----------|------|-------------|
@@ -39,7 +39,7 @@ WebSocket events -> Protocol FSM -> Crypto layer -> Application callbacks
 | `hm_send_bus_message` | 114 | Send generic bus message |
 | `hm_send_binary` | 126 | Send binary data (audio, etc.) |
 
-### Crypto — `include/hivemind_crypto.h`
+### Crypto: `include/hivemind_crypto.h`
 
 | Function | Line | Description |
 |----------|------|-------------|
@@ -51,7 +51,7 @@ WebSocket events -> Protocol FSM -> Crypto layer -> Application callbacks
 | `hm_crypto_encrypt_binary` | 120 | Encrypt to binary frame (nonce+ct+tag) |
 | `hm_crypto_decrypt_binary` | 135 | Decrypt binary frame |
 
-### Protocol FSM — `include/hivemind_protocol.h`
+### Protocol FSM: `include/hivemind_protocol.h`
 
 | Function | Line | Description |
 |----------|------|-------------|
@@ -60,20 +60,20 @@ WebSocket events -> Protocol FSM -> Crypto layer -> Application callbacks
 | `hm_protocol_encrypt_message` | 116 | Encrypt+envelope for sending |
 | `hm_protocol_decrypt_message` | 130 | Decrypt+parse received message |
 
-### Binary codec — `include/hivemind_binary.h`
+### Binary codec: `include/hivemind_binary.h`
 
 | Function | Line | Description |
 |----------|------|-------------|
 | `hm_binary_encode` | 77 | Encode V1 bitstring frame |
 | `hm_binary_decode` | 93 | Decode V1 bitstring frame |
 
-## Handshake FSM states — `hivemind_protocol.h:20`
+## Handshake FSM states: `hivemind_protocol.h:20`
 
 `DISCONNECTED` -> `CONNECTING` -> `HELLO_RECEIVED` -> `HANDSHAKE_SENT` -> `KEY_DERIVED` -> `READY`
 
 ## Key types
 
-- `hm_cipher_t` — `hivemind_crypto.h:19`: `HM_CIPHER_AES_GCM`, `HM_CIPHER_CHACHA20_POLY1305`
-- `hm_msg_type_t` — `hivemind_binary.h:22`: 14 message types (0-13)
-- `hm_bin_type_t` — `hivemind_binary.h:40`: 7 binary payload types (0-6)
-- `hm_state_t` — `hivemind_protocol.h:20`: 6 FSM states
+- `hm_cipher_t` (`hivemind_crypto.h:19`): `HM_CIPHER_AES_GCM`, `HM_CIPHER_CHACHA20_POLY1305`
+- `hm_msg_type_t` (`hivemind_binary.h:22`): 14 message types (0-13)
+- `hm_bin_type_t` (`hivemind_binary.h:40`): 7 binary payload types (0-6)
+- `hm_state_t` (`hivemind_protocol.h:20`): 6 FSM states
