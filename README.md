@@ -1,5 +1,10 @@
 # hivemind-esp32-client
 
+> **Experimental — not yet tested on hardware.** This client was written without a
+> device in the loop. It has not run on a physical ESP32 board yet. Treat it as a
+> starting point, not a finished product. Test it on your own hardware before you
+> rely on it, and please report what breaks.
+
 ESP-IDF (C) client library that connects an ESP32 to a [HiveMind](https://github.com/JarbasHiveMind/HiveMind-core) hub as an encrypted WebSocket **satellite**.
 
 A satellite captures input on an edge device, such as text, audio, or sensor data, and forwards it to a central **hub** ([hivemind-core](https://github.com/JarbasHiveMind/HiveMind-core)). The hub runs the AI reasoning (intent parsing, skills, text-to-speech) and sends responses back. This component implements the satellite side in C. It handles the HiveMind handshake, AEAD encryption, bus messaging, and binary audio transport, sized for an ESP32.
