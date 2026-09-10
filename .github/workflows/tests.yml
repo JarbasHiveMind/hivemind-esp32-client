@@ -67,6 +67,6 @@ jobs:
       - name: idf.py build
         uses: espressif/esp-idf-ci-action@v1
         with:
-          esp_idf_version: v5.4
+          esp_idf_version: v5.4.4
           target: ${{ matrix.example.target }}
           path: ${{ matrix.example.path }}
