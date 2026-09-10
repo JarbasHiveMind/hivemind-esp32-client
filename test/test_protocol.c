@@ -136,6 +136,7 @@ TEST_CASE("shake request in HELLO_RECEIVED sends envelope reply", "[protocol]")
 {
     hm_protocol_ctx_t ctx;
     hm_protocol_init(&ctx, "testpass", "site", HM_CIPHER_AES_GCM);
+    hm_protocol_set_legacy_hub(&ctx, true);
     ctx.state = HM_STATE_HELLO_RECEIVED;
 
     const char *shake = "{\"msg_type\":\"handshake\",\"payload\":{\"handshake\":true}}";
@@ -161,6 +162,7 @@ TEST_CASE("shake response derives key and reaches READY", "[protocol]")
 {
     hm_protocol_ctx_t ctx;
     hm_protocol_init(&ctx, "testpass", "site", HM_CIPHER_AES_GCM);
+    hm_protocol_set_legacy_hub(&ctx, true);
 
     /* Step 1: hello */
     const char *hello = "{\"msg_type\":\"hello\",\"payload\":{\"pubkey\":\"\",\"peer\":\"s\",\"node_id\":\"n\"}}";
@@ -246,6 +248,7 @@ TEST_CASE("encrypt then decrypt roundtrip preserves payload", "[protocol]")
     /* Set up a READY context by running full handshake */
     hm_protocol_ctx_t ctx;
     hm_protocol_init(&ctx, "roundtrip", "site", HM_CIPHER_AES_GCM);
+    hm_protocol_set_legacy_hub(&ctx, true);
 
     /* hello */
     const char *hello = "{\"msg_type\":\"hello\",\"payload\":{\"pubkey\":\"\",\"peer\":\"s\",\"node_id\":\"n\"}}";

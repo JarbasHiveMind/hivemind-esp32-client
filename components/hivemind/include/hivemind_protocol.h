@@ -5,6 +5,17 @@
 #ifndef HIVEMIND_PROTOCOL_H
 #define HIVEMIND_PROTOCOL_H
 
+/** Client release version (mirrors components/hivemind/idf_component.yml). */
+#define HM_CLIENT_VERSION_MAJOR 0
+#define HM_CLIENT_VERSION_MINOR 1
+#define HM_CLIENT_VERSION_PATCH 0
+
+/** Major version in which the legacy (pre-v3) password handshake is
+ *  removed entirely: the next major release after this one
+ *  (HIVEMIND-CRYPTO-1 sect. 3, sect. 5 make the Noise handshake
+ *  mandatory with no legacy fallback). */
+#define HM_LEGACY_HUB_REMOVAL_MAJOR (HM_CLIENT_VERSION_MAJOR + 1)
+
 #include <stdint.h>
 #include <stdbool.h>
 #include "esp_err.h"
@@ -58,6 +69,12 @@ typedef struct {
     uint8_t psk[HM_NOISE_KEY_SIZE];
     uint8_t static_key[HM_NOISE_KEY_SIZE]; /**< Own X25519 static private key. */
     bool has_server_static_key;   /**< Server key pinned/provisioned (enables KKpsk0 + pin check). */
+    bool legacy_hub;               /**< Operator opt-in: allow the legacy
+                                    *   pre-v3 password handshake when the
+                                    *   hub cannot complete Noise
+                                    *   (HIVEMIND-CRYPTO-1 sect. 3, sect. 5).
+                                    *   Off by default; never derived from
+                                    *   anything the hub advertises. */
     uint8_t server_static_key[HM_NOISE_KEY_SIZE]; /**< Server X25519 static public key. */
     bool use_noise;               /**< True once a v3 Noise session is established. */
     hm_noise_ctx_t noise;
@@ -97,6 +114,21 @@ void hm_protocol_set_v3(hm_protocol_ctx_t *ctx,
                         const uint8_t psk[HM_NOISE_KEY_SIZE],
                         const uint8_t static_priv[HM_NOISE_KEY_SIZE],
                         const uint8_t *server_static_pub);
+
+/**
+ * @brief Operator opt-in for the legacy (pre-v3) password handshake.
+ *
+ * Off by default. When set, a hub that cannot complete the Noise
+ * handshake is served the legacy hsub/PBKDF2 handshake instead of being
+ * rejected, and a warning is logged at the first attempt naming the
+ * missing PAKE/forward-secrecy properties and the removal version
+ * (HM_LEGACY_HUB_REMOVAL_MAJOR). This choice is never derived from
+ * anything the hub advertises (HIVEMIND-CRYPTO-1 sect. 3, sect. 5).
+ *
+ * @param ctx         Protocol context.
+ * @param legacy_hub  True to allow the legacy handshake as a fallback.
+ */
+void hm_protocol_set_legacy_hub(hm_protocol_ctx_t *ctx, bool legacy_hub);
 
 /**
  * @brief Free heap state owned by the protocol context.

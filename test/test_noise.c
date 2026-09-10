@@ -354,12 +354,42 @@ TEST_CASE("v3 negotiation prefers KKpsk0 when the server key is pinned", "[noise
     hm_protocol_deinit(&ctx);
 }
 
-TEST_CASE("v2 server or missing PSK falls back to the legacy handshake", "[noise]")
+TEST_CASE("v2-only hub is rejected by default, never sent a legacy shake", "[noise]")
 {
-    /* server without v3 -> legacy hsub even though a PSK is provisioned */
+    /* server without v3 -> rejected, legacy_hub defaults to false */
     hm_protocol_ctx_t ctx;
     hm_protocol_init(&ctx, "password", "site", HM_CIPHER_CHACHA20_POLY1305);
     hm_protocol_set_v3(&ctx, fx_psk, fx_s_initiator_priv, NULL);
+
+    char *reply = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, hm_protocol_handle_message(&ctx, SERVER_HELLO_JSON, &reply));
+    const char *shake_v2 =
+        "{\"msg_type\":\"shake\",\"payload\":{\"handshake\":true,"
+        "\"max_protocol_version\":2,"
+        "\"encodings\":[\"JSON-HEX\"],\"ciphers\":[\"AES-GCM\"]}}";
+    TEST_ASSERT_EQUAL(ESP_ERR_NOT_SUPPORTED,
+                      hm_protocol_handle_message(&ctx, shake_v2, &reply));
+    TEST_ASSERT_NULL(reply); /* never sent a legacy "shake" envelope */
+    TEST_ASSERT_NOT_EQUAL(HM_STATE_HANDSHAKE_SENT, ctx.state);
+    hm_protocol_deinit(&ctx);
+
+    /* v3 server but no PSK provisioned -> also rejected by default */
+    hm_protocol_init(&ctx, "password", "site", HM_CIPHER_CHACHA20_POLY1305);
+    TEST_ASSERT_EQUAL(ESP_OK, hm_protocol_handle_message(&ctx, SERVER_HELLO_JSON, &reply));
+    TEST_ASSERT_EQUAL(ESP_ERR_NOT_SUPPORTED,
+                      hm_protocol_handle_message(&ctx, SERVER_SHAKE_V3_JSON, &reply));
+    TEST_ASSERT_NULL(reply);
+    hm_protocol_deinit(&ctx);
+}
+
+TEST_CASE("legacy_hub opt-in runs the legacy handshake regardless of the hub offer", "[noise]")
+{
+    /* operator explicitly set legacy_hub=true -> legacy hsub handshake used,
+     * even though a PSK is provisioned and the hub only offers v2. */
+    hm_protocol_ctx_t ctx;
+    hm_protocol_init(&ctx, "password", "site", HM_CIPHER_CHACHA20_POLY1305);
+    hm_protocol_set_v3(&ctx, fx_psk, fx_s_initiator_priv, NULL);
+    hm_protocol_set_legacy_hub(&ctx, true);
 
     char *reply = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, hm_protocol_handle_message(&ctx, SERVER_HELLO_JSON, &reply));
@@ -375,8 +405,9 @@ TEST_CASE("v2 server or missing PSK falls back to the legacy handshake", "[noise
     reply = NULL;
     hm_protocol_deinit(&ctx);
 
-    /* v3 server but no PSK provisioned -> legacy hsub */
+    /* also true with a v3-capable hub but no PSK provisioned */
     hm_protocol_init(&ctx, "password", "site", HM_CIPHER_CHACHA20_POLY1305);
+    hm_protocol_set_legacy_hub(&ctx, true);
     TEST_ASSERT_EQUAL(ESP_OK, hm_protocol_handle_message(&ctx, SERVER_HELLO_JSON, &reply));
     TEST_ASSERT_EQUAL(ESP_OK, hm_protocol_handle_message(&ctx, SERVER_SHAKE_V3_JSON, &reply));
     TEST_ASSERT_NOT_NULL(reply);
