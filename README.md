@@ -16,7 +16,7 @@ ESP32 (this component)  ⇄  HiveMind hub (hivemind-core)  ⇄  OVOS skills
 ## Features
 
 - **Encrypted**: AES-256-GCM (hardware-accelerated on ESP32) or ChaCha20-Poly1305. The session key comes from your password via PBKDF2-HMAC-SHA256.
-- **Protocol v3 (Noise)**: `Noise_XXpsk2`/`Noise_KKpsk0` over X25519 + ChaCha20-Poly1305 + SHA-256 with a provisioned PSK. This gives mutual authentication, forward secrecy, and replay-resistant transport. The client falls back to the legacy handshake on older hubs (see [Configuration](#configuration)).
+- **Protocol v3 (Noise)**: `Noise_XXpsk2`/`Noise_KKpsk0` over X25519 + ChaCha20-Poly1305 + SHA-256 with a provisioned PSK. This gives mutual authentication, forward secrecy, and replay-resistant transport. The Noise handshake is mandatory on every connection; a hub that cannot complete it is rejected unless the operator opts into the legacy handshake (see [Configuration](#configuration)).
 - **Bus + binary transport**: send text utterances and arbitrary bus messages. Stream raw audio and receive TTS audio over the binary channel.
 - **Auto-reconnect**: reconnects after a drop, configurable via `reconnect_ms`.
 - **Drop-in component**: built on `mbedtls` and `json` (bundled in ESP-IDF) plus the
@@ -126,16 +126,24 @@ void app_main(void) {
 | `noise_psk_hex` | Provisioned 32-byte PSK (64 hex chars) enabling protocol v3 | disabled |
 | `noise_static_key_hex` | Own X25519 static private key (64 hex chars) | generated at init |
 | `noise_server_key_hex` | Server's X25519 static public key. Pins the server and enables `KKpsk0` | unpinned (TOFU) |
+| `legacy_hub` | Operator opt-in for the legacy (pre-v3) password handshake when the hub cannot complete Noise | `false` |
 
 ### Protocol v3 (Noise handshake)
 
 When the hub advertises protocol version 3 and a PSK is provisioned, the
 client runs a Noise handshake (`Noise_XXpsk2_25519_ChaChaPoly_SHA256`, or
 `Noise_KKpsk0_25519_ChaChaPoly_SHA256` when the server static key is
-provisioned) instead of the legacy hsub/PBKDF2 handshake. This gives mutual
-authentication, forward secrecy, and replay-resistant transport encryption
-with sequential nonces. Servers without v3 keep working. The client falls
-back to the legacy handshake automatically.
+provisioned). This gives mutual authentication, forward secrecy, and
+replay-resistant transport encryption with sequential nonces. The Noise
+handshake is mandatory on every connection: a hub that cannot complete it
+is rejected, and nothing about that choice is derived from what the hub
+advertises.
+
+Set `legacy_hub = true` only for a hub that cannot run the Noise
+handshake. This runs the legacy hsub/PBKDF2 password handshake instead of
+rejecting the connection, and the client logs a warning at connect time:
+the legacy handshake is not a PAKE, provides no forward secrecy, and is
+scheduled for removal in the client's next major version.
 
 The PSK is **derived on a capable host, never on-device** (argon2id is
 infeasible on a microcontroller). Derive it once for the target hub and

@@ -51,6 +51,16 @@ typedef struct {
      *  When set it is the pinned server key (a mismatching server aborts the
      *  handshake) and enables the KKpsk0 pattern. */
     const char *noise_server_key_hex;
+
+    /** Operator opt-in for the legacy (pre-v3) password handshake, off by
+     *  default. The Noise handshake is mandatory on every connection
+     *  (HIVEMIND-CRYPTO-1 §3, §5): a hub that cannot complete it is
+     *  rejected unless this is explicitly set. When set, the client logs
+     *  a warning at connect time naming the missing PAKE/forward-secrecy
+     *  properties and the version the legacy handshake will be removed
+     *  in (HM_LEGACY_HUB_REMOVAL_MAJOR). This choice is never derived
+     *  from anything the hub advertises. */
+    bool legacy_hub;
 } hm_config_t;
 
 /** Callback: bus message received. */

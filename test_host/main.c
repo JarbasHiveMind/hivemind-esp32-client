@@ -45,12 +45,12 @@ void test_proto_88(void);   /* build envelope with null payload */
 void test_proto_103(void);  /* build envelope buffer overflow */
 void test_proto_119(void);  /* hello transitions to HELLO_RECEIVED */
 void test_proto_135(void);  /* shake request sends envelope reply */
-void test_proto_160(void);  /* shake response reaches READY */
-void test_proto_193(void);  /* invalid JSON returns error */
-void test_proto_204(void);  /* wrong message type in CONNECTING */
-void test_proto_220(void);  /* encrypt not-ready returns error */
-void test_proto_232(void);  /* decrypt not-ready returns error */
-void test_proto_244(void);  /* encrypt-decrypt roundtrip */
+void test_proto_161(void);  /* shake response reaches READY */
+void test_proto_195(void);  /* invalid JSON returns error */
+void test_proto_206(void);  /* wrong message type in CONNECTING */
+void test_proto_222(void);  /* encrypt not-ready returns error */
+void test_proto_234(void);  /* decrypt not-ready returns error */
+void test_proto_246(void);  /* encrypt-decrypt roundtrip */
 
 /* test_noise.c — TEST_FILE_ID=noise */
 void test_noise_52(void);   /* XXpsk2 handshake byte-identical to Python */
@@ -63,8 +63,9 @@ void test_noise_212(void);  /* KKpsk0 wrong PSK fails */
 void test_noise_238(void);  /* canonical JSON matches Python */
 void test_noise_296(void);  /* v3 negotiation sends Noise message 1 */
 void test_noise_335(void);  /* v3 negotiation prefers KKpsk0 when pinned */
-void test_noise_357(void);  /* fallback to legacy handshake */
-void test_noise_389(void);  /* transport frame markers roundtrip */
+void test_noise_357(void);  /* v2-only hub rejected by default, no legacy shake */
+void test_noise_385(void);  /* legacy_hub opt-in runs legacy handshake regardless of offer */
+void test_noise_420(void);  /* transport frame markers roundtrip */
 
 /* test_vad_simple.c — TEST_FILE_ID=vad */
 void test_vad_12(void);   /* vad detects silence in zero buffer */
@@ -158,7 +159,8 @@ int main(void)
     RUN_TEST(test_noise_296);
     RUN_TEST(test_noise_335);
     RUN_TEST(test_noise_357);
-    RUN_TEST(test_noise_389);
+    RUN_TEST(test_noise_385);
+    RUN_TEST(test_noise_420);
 
     /* VAD tests */
     RUN_TEST(test_vad_12);
@@ -201,12 +203,12 @@ int main(void)
     RUN_TEST(test_proto_103);
     RUN_TEST(test_proto_119);
     RUN_TEST(test_proto_135);
-    RUN_TEST(test_proto_160);
-    RUN_TEST(test_proto_193);
-    RUN_TEST(test_proto_204);
-    RUN_TEST(test_proto_220);
-    RUN_TEST(test_proto_232);
-    RUN_TEST(test_proto_244);
+    RUN_TEST(test_proto_161);
+    RUN_TEST(test_proto_195);
+    RUN_TEST(test_proto_206);
+    RUN_TEST(test_proto_222);
+    RUN_TEST(test_proto_234);
+    RUN_TEST(test_proto_246);
 
     return UNITY_END();
 }
