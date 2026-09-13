@@ -903,24 +903,28 @@ esp_err_t hm_protocol_noise_decrypt_frame(hm_protocol_ctx_t *ctx,
 /**
  * @brief Handle first SHAKE from server (state HELLO_RECEIVED -> HANDSHAKE_SENT).
  *
- * Server sends shake with handshake:true. Client responds with its own SHAKE
- * containing envelope (hsub), preferred cipher, encodings.
+ * A v3 server advertises Noise patterns, suites, encodings, binarize and
+ * max_protocol_version, with no "handshake" key (HIVEMIND-CRYPTO-1 §3.3
+ * step 2). The client answers with Noise message 1. A legacy server sends
+ * handshake:true; the client then answers with its envelope (hsub),
+ * preferred cipher and encodings.
  */
 static esp_err_t handle_shake_request(hm_protocol_ctx_t *ctx, const cJSON *payload,
                                        char **reply_out)
 {
-    bool handshake = json_get_bool(payload, "handshake", false);
-    if (!handshake) {
-        ESP_LOGE(TAG, "Expected handshake:true in SHAKE");
-        return ESP_ERR_INVALID_STATE;
-    }
-
     /* Protocol v3 (HIVEMIND-WIRE-1 §2): when the server advertises v3 with
      * Noise parameters and a PSK is provisioned, run the Noise handshake;
      * otherwise fall through to the legacy (v0-v2) hsub handshake. */
     hm_noise_pattern_t pattern;
     if (select_noise(ctx, payload, &pattern)) {
         return start_noise_handshake(ctx, pattern, payload, reply_out);
+    }
+
+    /* The "handshake" key belongs to the legacy advertisement only. */
+    bool handshake = json_get_bool(payload, "handshake", false);
+    if (!handshake) {
+        ESP_LOGE(TAG, "Expected handshake:true in SHAKE");
+        return ESP_ERR_INVALID_STATE;
     }
 
     /* Generate client hsub */
