@@ -421,3 +421,69 @@ TEST_CASE("noise transport frame markers roundtrip", "[noise]")
     TEST_ASSERT_EQUAL(strlen(json), pt_len);
     TEST_ASSERT_EQUAL_MEMORY(json, pt, pt_len);
 }
+
+TEST_CASE("hivemind-core dev shake without a handshake key starts Noise", "[noise]")
+{
+    /* First two frames sent by a real hivemind-core 5.1.4a2 hub
+     * (hivemind-websocket-protocol 1.0.2a1), captured over a websocket.
+     * The v3 shake has no "handshake" key (HIVEMIND-CRYPTO-1 §3.3 step 2). */
+    static const char *core_hello =
+        "{\"msg_type\": \"hello\", \"payload\": {\"pubkey\": \"-----BEGIN PUBLIC KEY-----\\n"
+        "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA8PE6hFVlK+u1TGkWOuB5\\n"
+        "ctmfA/SO8XrNBcU5jtFtWMG56cqxgPH4ykvm+/WzJul7avy1Y+NaXoTvMrXoDhCx\\n"
+        "Miv/6lUjEgFzAq21cO7SiZ8swKY5WfGDfdTZbVXyEAVW2Ag5CdZr9jqVauwLcXL0\\n"
+        "8aUdJApG/SJ0xUH84N8/MELgj1uwajerXohqy0yIKcAGQtoDt/LPvnHIISmcn8C8\\n"
+        "2f8m1l7+RvCYHar24BkOtgRvnpmJWo3Q8VNxBsJDI3B7pYPQLaJ+jZEHas0jLdtI\\n"
+        "fF9RlUzhQNNSPLT4Db70dYsWO+IKhtvaNffHR3h2O/znzuMd3019YaGNBhL1GDUN\\n"
+        "1wIDAQAB\\n-----END PUBLIC KEY-----\", "
+        "\"peer\": \"esp::1::esp::994da937-b4cf-4d87-b991-e51759f7dd04\", "
+        "\"node_id\": \"-----BEGIN PUBLIC KEY-----\\n"
+        "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA8PE6hFVlK+u1TGkWOuB5\\n"
+        "ctmfA/SO8XrNBcU5jtFtWMG56cqxgPH4ykvm+/WzJul7avy1Y+NaXoTvMrXoDhCx\\n"
+        "Miv/6lUjEgFzAq21cO7SiZ8swKY5WfGDfdTZbVXyEAVW2Ag5CdZr9jqVauwLcXL0\\n"
+        "8aUdJApG/SJ0xUH84N8/MELgj1uwajerXohqy0yIKcAGQtoDt/LPvnHIISmcn8C8\\n"
+        "2f8m1l7+RvCYHar24BkOtgRvnpmJWo3Q8VNxBsJDI3B7pYPQLaJ+jZEHas0jLdtI\\n"
+        "fF9RlUzhQNNSPLT4Db70dYsWO+IKhtvaNffHR3h2O/znzuMd3019YaGNBhL1GDUN\\n"
+        "1wIDAQAB\\n-----END PUBLIC KEY-----\"}, \"metadata\": {}, \"route\": [], "
+        "\"node\": null, \"target_site_id\": null, \"target_pubkey\": null, "
+        "\"source_peer\": null}";
+    static const char *core_shake =
+        "{\"msg_type\": \"shake\", \"payload\": {\"max_protocol_version\": 3, "
+        "\"binarize\": false, \"encodings\": [\"JSON-B64\", \"JSON-URLSAFE-B64\", "
+        "\"JSON-B91\", \"JSON-Z85B\", \"JSON-Z85P\", \"JSON-B32\", \"JSON-HEX\"], "
+        "\"ciphers\": [\"CHACHA20-POLY1305\", \"AES-GCM\"], "
+        "\"noise\": {\"patterns\": [\"XXpsk2\"], "
+        "\"suites\": [\"25519_ChaChaPoly_SHA256\", \"25519_AESGCM_SHA256\"]}}, "
+        "\"metadata\": {}, \"route\": [], \"node\": null, \"target_site_id\": null, "
+        "\"target_pubkey\": null, \"source_peer\": null}";
+
+    hm_protocol_ctx_t ctx;
+    hm_protocol_init(&ctx, "password", "site", HM_CIPHER_CHACHA20_POLY1305);
+    hm_protocol_set_v3(&ctx, fx_psk, fx_s_initiator_priv, NULL);
+
+    char *reply = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, hm_protocol_handle_message(&ctx, core_hello, &reply));
+    TEST_ASSERT_NULL(reply);
+    TEST_ASSERT_EQUAL(ESP_OK, hm_protocol_handle_message(&ctx, core_shake, &reply));
+    TEST_ASSERT_NOT_NULL(reply);
+    TEST_ASSERT_EQUAL(HM_STATE_NOISE_HANDSHAKE_SENT, ctx.state);
+    cJSON *env = cJSON_Parse(reply);
+    TEST_ASSERT_NOT_NULL(env);
+    cJSON *noise = cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetObjectItemCaseSensitive(env, "payload"), "noise");
+    TEST_ASSERT_NOT_NULL(noise);
+    TEST_ASSERT_EQUAL_STRING("XXpsk2",
+        cJSON_GetObjectItemCaseSensitive(noise, "pattern")->valuestring);
+    cJSON_Delete(env);
+    free(reply);
+    reply = NULL;
+    hm_protocol_deinit(&ctx);
+
+    /* No PSK: the legacy path still needs handshake:true, so no hsub
+     * envelope goes to a hub that did not offer the legacy handshake. */
+    hm_protocol_init(&ctx, "password", "site", HM_CIPHER_CHACHA20_POLY1305);
+    TEST_ASSERT_EQUAL(ESP_OK, hm_protocol_handle_message(&ctx, core_hello, &reply));
+    TEST_ASSERT_NOT_EQUAL(ESP_OK, hm_protocol_handle_message(&ctx, core_shake, &reply));
+    TEST_ASSERT_NULL(reply);
+    hm_protocol_deinit(&ctx);
+}

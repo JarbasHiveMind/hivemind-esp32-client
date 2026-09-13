@@ -65,6 +65,7 @@ void test_noise_296(void);  /* v3 negotiation sends Noise message 1 */
 void test_noise_335(void);  /* v3 negotiation prefers KKpsk0 when pinned */
 void test_noise_357(void);  /* fallback to legacy handshake */
 void test_noise_389(void);  /* transport frame markers roundtrip */
+void test_noise_425(void);  /* hivemind-core dev shake without handshake key */
 
 /* test_vad_simple.c — TEST_FILE_ID=vad */
 void test_vad_12(void);   /* vad detects silence in zero buffer */
@@ -159,6 +160,7 @@ int main(void)
     RUN_TEST(test_noise_335);
     RUN_TEST(test_noise_357);
     RUN_TEST(test_noise_389);
+    RUN_TEST(test_noise_425);
 
     /* VAD tests */
     RUN_TEST(test_vad_12);
