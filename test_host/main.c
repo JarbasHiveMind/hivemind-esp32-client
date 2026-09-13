@@ -66,6 +66,7 @@ void test_noise_335(void);  /* v3 negotiation prefers KKpsk0 when pinned */
 void test_noise_357(void);  /* v2-only hub rejected by default, no legacy shake */
 void test_noise_385(void);  /* legacy_hub opt-in runs legacy handshake regardless of offer */
 void test_noise_420(void);  /* transport frame markers roundtrip */
+void test_noise_456(void);  /* hivemind-core dev shake without handshake key */
 
 /* test_vad_simple.c — TEST_FILE_ID=vad */
 void test_vad_12(void);   /* vad detects silence in zero buffer */
@@ -161,6 +162,7 @@ int main(void)
     RUN_TEST(test_noise_357);
     RUN_TEST(test_noise_385);
     RUN_TEST(test_noise_420);
+    RUN_TEST(test_noise_456);
 
     /* VAD tests */
     RUN_TEST(test_vad_12);
