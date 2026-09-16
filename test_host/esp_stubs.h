@@ -36,6 +36,7 @@ typedef int esp_err_t;
 #define ESP_ERR_NOT_FOUND     -5
 #define ESP_ERR_INVALID_STATE    -6
 #define ESP_ERR_INVALID_RESPONSE -7
+#define ESP_ERR_NOT_SUPPORTED    0x106  /* matches ESP-IDF esp_err.h */
 
 /* ================================================================
  * Random number generation

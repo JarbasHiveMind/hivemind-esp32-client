@@ -293,6 +293,11 @@ void hm_protocol_set_v3(hm_protocol_ctx_t *ctx,
              server_static_pub ? ", server static key pinned" : "");
 }
 
+void hm_protocol_set_legacy_hub(hm_protocol_ctx_t *ctx, bool legacy_hub)
+{
+    ctx->legacy_hub = legacy_hub;
+}
+
 void hm_protocol_deinit(hm_protocol_ctx_t *ctx)
 {
     free(ctx->server_hello_canon);
@@ -916,12 +921,31 @@ static esp_err_t handle_shake_request(hm_protocol_ctx_t *ctx, const cJSON *paylo
     }
 
     /* Protocol v3 (HIVEMIND-WIRE-1 §2): when the server advertises v3 with
-     * Noise parameters and a PSK is provisioned, run the Noise handshake;
-     * otherwise fall through to the legacy (v0-v2) hsub handshake. */
+     * Noise parameters and a PSK is provisioned, run the Noise handshake. The
+     * Noise handshake is mandatory on every connection: there is no
+     * cleartext, pre-shared-key, or password alternative and no
+     * protocol-version ladder to negotiate down (HIVEMIND-CRYPTO-1 §3).
+     * A hub that cannot complete it is rejected unless the operator has
+     * explicitly opted into the legacy handshake via legacy_hub; that
+     * choice never depends on anything the hub advertises. */
     hm_noise_pattern_t pattern;
     if (select_noise(ctx, payload, &pattern)) {
         return start_noise_handshake(ctx, pattern, payload, reply_out);
     }
+
+    if (!ctx->legacy_hub) {
+        ESP_LOGE(TAG, "Hub cannot complete the Noise handshake and legacy_hub "
+                      "is disabled - rejecting connection (HIVEMIND-CRYPTO-1 §3: "
+                      "the Noise handshake is mandatory on every connection, no "
+                      "cleartext or legacy fallback)");
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
+    ESP_LOGW(TAG, "legacy_hub is enabled: falling back to the legacy hsub/PBKDF2 "
+                  "handshake. This handshake is not a PAKE, provides no forward "
+                  "secrecy, and will be removed in v%d.0.0 (HIVEMIND-CRYPTO-1 §3, "
+                  "§5). Provision a PSK and drop legacy_hub as soon as the hub "
+                  "supports the Noise handshake.", HM_LEGACY_HUB_REMOVAL_MAJOR);
 
     /* Generate client hsub */
     esp_err_t err = hm_crypto_generate_hsub(ctx->password, ctx->client_iv, ctx->client_hsub);

@@ -33,6 +33,7 @@ struct hm_client {
     uint8_t noise_static_key[HM_NOISE_KEY_SIZE];
     bool has_server_noise_key;
     uint8_t server_noise_key[HM_NOISE_KEY_SIZE];
+    bool legacy_hub;
 
     /* Protocol state machine */
     hm_protocol_ctx_t protocol;
@@ -371,6 +372,7 @@ esp_err_t hm_client_init(hm_client_t **client_out, const hm_config_t *config)
     client->site_id = safe_strdup(config->site_id);
     client->port = config->port ? config->port : 5678;
     client->reconnect_ms = config->reconnect_ms ? config->reconnect_ms : 5000;
+    client->legacy_hub = config->legacy_hub;
 
     /* Verify critical allocations */
     if (!client->host || !client->password) {
@@ -419,6 +421,7 @@ esp_err_t hm_client_init(hm_client_t **client_out, const hm_config_t *config)
                            client->has_server_noise_key ? client->server_noise_key
                                                         : NULL);
     }
+    hm_protocol_set_legacy_hub(&client->protocol, client->legacy_hub);
 
     /* Create reconnect timer */
     esp_timer_create_args_t timer_args = {
@@ -493,6 +496,7 @@ esp_err_t hm_client_connect(hm_client_t *client)
                            client->has_server_noise_key ? client->server_noise_key
                                                         : NULL);
     }
+    hm_protocol_set_legacy_hub(&client->protocol, client->legacy_hub);
 
     /* Base64 encode "username:access_key" for authorization */
     char credentials[256];
