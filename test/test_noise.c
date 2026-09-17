@@ -518,3 +518,70 @@ TEST_CASE("hivemind-core dev shake without a handshake key starts Noise", "[nois
     TEST_ASSERT_NULL(reply);
     hm_protocol_deinit(&ctx);
 }
+
+TEST_CASE("a shake with no payload key never starts Noise", "[noise]")
+{
+    /* HIVEMIND-MSG-1 §2: "payload" is a required envelope field. A frame that
+     * puts the Noise offer at the top level is malformed. The client used to
+     * fall back to the root object, canonicalize it into the prologue
+     * (HIVEMIND-CRYPTO-1 §3.3) and answer with Noise message 1. The hub
+     * canonicalizes its own payload, so the two prologues never match and the
+     * handshake aborts at the next step. */
+    static const char *hello_no_payload =
+        "{\"msg_type\": \"hello\", \"pubkey\": \"\", \"peer\": \"s\", "
+        "\"node_id\": \"n\"}";
+    static const char *hello_ok =
+        "{\"msg_type\": \"hello\", \"payload\": {\"pubkey\": \"\", "
+        "\"peer\": \"s\", \"node_id\": \"n\"}}";
+    static const char *shake_no_payload =
+        "{\"msg_type\": \"shake\", \"max_protocol_version\": 3, "
+        "\"binarize\": false, \"encodings\": [\"JSON-HEX\"], "
+        "\"ciphers\": [\"CHACHA20-POLY1305\"], "
+        "\"noise\": {\"patterns\": [\"XXpsk2\"], "
+        "\"suites\": [\"25519_ChaChaPoly_SHA256\"]}}";
+    static const char *shake_ok =
+        "{\"msg_type\": \"shake\", \"payload\": {\"max_protocol_version\": 3, "
+        "\"binarize\": false, \"encodings\": [\"JSON-HEX\"], "
+        "\"ciphers\": [\"CHACHA20-POLY1305\"], "
+        "\"noise\": {\"patterns\": [\"XXpsk2\"], "
+        "\"suites\": [\"25519_ChaChaPoly_SHA256\"]}}}";
+
+    hm_protocol_ctx_t ctx;
+    char *reply = NULL;
+
+    /* The shake with the offer at the root is rejected, sends nothing, and
+     * leaves the state where it was. */
+    hm_protocol_init(&ctx, "password", "site", HM_CIPHER_CHACHA20_POLY1305);
+    hm_protocol_set_v3(&ctx, fx_psk, fx_s_initiator_priv, NULL);
+    TEST_ASSERT_EQUAL(ESP_OK, hm_protocol_handle_message(&ctx, hello_ok, &reply));
+    TEST_ASSERT_NULL(reply);
+    TEST_ASSERT_EQUAL(HM_STATE_HELLO_RECEIVED, ctx.state);
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_RESPONSE,
+        hm_protocol_handle_message(&ctx, shake_no_payload, &reply));
+    TEST_ASSERT_NULL(reply);
+    TEST_ASSERT_EQUAL(HM_STATE_HELLO_RECEIVED, ctx.state);
+    hm_protocol_deinit(&ctx);
+
+    /* Positive control: the same offer inside a payload does start Noise. */
+    reply = NULL;
+    hm_protocol_init(&ctx, "password", "site", HM_CIPHER_CHACHA20_POLY1305);
+    hm_protocol_set_v3(&ctx, fx_psk, fx_s_initiator_priv, NULL);
+    TEST_ASSERT_EQUAL(ESP_OK, hm_protocol_handle_message(&ctx, hello_ok, &reply));
+    TEST_ASSERT_NULL(reply);
+    TEST_ASSERT_EQUAL(ESP_OK, hm_protocol_handle_message(&ctx, shake_ok, &reply));
+    TEST_ASSERT_NOT_NULL(reply);
+    TEST_ASSERT_EQUAL(HM_STATE_NOISE_HANDSHAKE_SENT, ctx.state);
+    free(reply);
+    hm_protocol_deinit(&ctx);
+
+    /* A hello with no payload is rejected too: its bytes are the first part
+     * of the prologue, so the root object must not stand in for it. */
+    reply = NULL;
+    hm_protocol_init(&ctx, "password", "site", HM_CIPHER_CHACHA20_POLY1305);
+    hm_protocol_set_v3(&ctx, fx_psk, fx_s_initiator_priv, NULL);
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_RESPONSE,
+        hm_protocol_handle_message(&ctx, hello_no_payload, &reply));
+    TEST_ASSERT_NULL(reply);
+    TEST_ASSERT_EQUAL(HM_STATE_CONNECTING, ctx.state);
+    hm_protocol_deinit(&ctx);
+}
