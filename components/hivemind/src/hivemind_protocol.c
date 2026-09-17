@@ -1098,13 +1098,24 @@ esp_err_t hm_protocol_handle_message(hm_protocol_ctx_t *ctx,
 
     cJSON *payload = cJSON_GetObjectItemCaseSensitive(root, "payload");
 
+    /* HIVEMIND-MSG-1 §2 makes "payload" a required envelope field, so a
+     * handshake-phase frame without it is malformed. Reading the control
+     * fields from the root object instead puts the wrong bytes in the Noise
+     * prologue (HIVEMIND-CRYPTO-1 §3.3), which starts a handshake that can
+     * only abort. Reject the frame here rather than start one. */
+    if (!payload) {
+        ESP_LOGE(TAG, "No payload in %s envelope", type_str);
+        cJSON_Delete(root);
+        return ESP_ERR_INVALID_RESPONSE;
+    }
+
     switch (ctx->state) {
     case HM_STATE_CONNECTING:
         if (msg_type != HM_MSG_HELLO) {
             ESP_LOGE(TAG, "Expected HELLO in CONNECTING state, got %s", type_str);
             err = ESP_ERR_INVALID_STATE;
         } else {
-            err = handle_hello(ctx, payload ? payload : root);
+            err = handle_hello(ctx, payload);
         }
         break;
 
@@ -1113,7 +1124,7 @@ esp_err_t hm_protocol_handle_message(hm_protocol_ctx_t *ctx,
             ESP_LOGE(TAG, "Expected SHAKE in HELLO_RECEIVED state, got %s", type_str);
             err = ESP_ERR_INVALID_STATE;
         } else {
-            err = handle_shake_request(ctx, payload ? payload : root, reply_out);
+            err = handle_shake_request(ctx, payload, reply_out);
         }
         break;
 
@@ -1122,7 +1133,7 @@ esp_err_t hm_protocol_handle_message(hm_protocol_ctx_t *ctx,
             ESP_LOGE(TAG, "Expected SHAKE in HANDSHAKE_SENT state, got %s", type_str);
             err = ESP_ERR_INVALID_STATE;
         } else {
-            err = handle_shake_response(ctx, payload ? payload : root, reply_out);
+            err = handle_shake_response(ctx, payload, reply_out);
         }
         break;
 
@@ -1131,7 +1142,7 @@ esp_err_t hm_protocol_handle_message(hm_protocol_ctx_t *ctx,
             ESP_LOGE(TAG, "Expected SHAKE in NOISE_HANDSHAKE_SENT state, got %s", type_str);
             err = ESP_ERR_INVALID_STATE;
         } else {
-            err = handle_noise_shake_response(ctx, payload ? payload : root, reply_out);
+            err = handle_noise_shake_response(ctx, payload, reply_out);
         }
         break;
 
