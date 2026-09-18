@@ -68,6 +68,11 @@ void test_noise_385(void);  /* legacy_hub opt-in runs legacy handshake regardles
 void test_noise_420(void);  /* transport frame markers roundtrip */
 void test_noise_456(void);  /* hivemind-core dev shake without handshake key */
 void test_noise_522(void);  /* a shake with no payload key never starts Noise */
+void test_noise_616(void);  /* a shake whose payload is null is rejected */
+void test_noise_632(void);  /* a shake whose payload is a string is rejected */
+void test_noise_640(void);  /* a shake whose payload is a number is rejected */
+void test_noise_645(void);  /* a shake whose payload is an array is rejected */
+void test_noise_654(void);  /* a hello whose payload is an empty object passes the shape check */
 
 /* test_vad_simple.c — TEST_FILE_ID=vad */
 void test_vad_12(void);   /* vad detects silence in zero buffer */
@@ -165,6 +170,11 @@ int main(void)
     RUN_TEST(test_noise_420);
     RUN_TEST(test_noise_456);
     RUN_TEST(test_noise_522);
+    RUN_TEST(test_noise_616);
+    RUN_TEST(test_noise_632);
+    RUN_TEST(test_noise_640);
+    RUN_TEST(test_noise_645);
+    RUN_TEST(test_noise_654);
 
     /* VAD tests */
     RUN_TEST(test_vad_12);

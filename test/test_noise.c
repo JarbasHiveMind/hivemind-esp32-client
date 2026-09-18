@@ -585,3 +585,85 @@ TEST_CASE("a shake with no payload key never starts Noise", "[noise]")
     TEST_ASSERT_EQUAL(HM_STATE_CONNECTING, ctx.state);
     hm_protocol_deinit(&ctx);
 }
+
+/* HIVEMIND-MSG-1 §4: a HANDSHAKE payload "carries only the control fields
+ * those types require, and MAY be empty". The guard for a missing payload
+ * (test_noise_522) checks presence. These four check the shape: a payload
+ * that is present and not a mapping is rejected the same way, with no reply
+ * and no state change. Each shape is its own case so the runner names the
+ * one that regresses. */
+
+static const char *shape_hello_ok =
+    "{\"msg_type\": \"hello\", \"payload\": {\"pubkey\": \"\", "
+    "\"peer\": \"s\", \"node_id\": \"n\"}}";
+
+static void assert_shake_payload_rejected(const char *shake)
+{
+    hm_protocol_ctx_t ctx;
+    char *reply = NULL;
+    hm_protocol_init(&ctx, "password", "site", HM_CIPHER_CHACHA20_POLY1305);
+    hm_protocol_set_v3(&ctx, fx_psk, fx_s_initiator_priv, NULL);
+    TEST_ASSERT_EQUAL(ESP_OK, hm_protocol_handle_message(&ctx, shape_hello_ok, &reply));
+    TEST_ASSERT_NULL(reply);
+    TEST_ASSERT_EQUAL(HM_STATE_HELLO_RECEIVED, ctx.state);
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_RESPONSE,
+        hm_protocol_handle_message(&ctx, shake, &reply));
+    TEST_ASSERT_NULL(reply);
+    TEST_ASSERT_EQUAL(HM_STATE_HELLO_RECEIVED, ctx.state);
+    hm_protocol_deinit(&ctx);
+}
+
+TEST_CASE("a shake whose payload is null is rejected", "[noise]")
+{
+    assert_shake_payload_rejected("{\"msg_type\": \"shake\", \"payload\": null}");
+
+    /* The same for a hello, whose bytes open the prologue. */
+    hm_protocol_ctx_t ctx;
+    char *reply = NULL;
+    hm_protocol_init(&ctx, "password", "site", HM_CIPHER_CHACHA20_POLY1305);
+    hm_protocol_set_v3(&ctx, fx_psk, fx_s_initiator_priv, NULL);
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_RESPONSE, hm_protocol_handle_message(&ctx,
+        "{\"msg_type\": \"hello\", \"payload\": null}", &reply));
+    TEST_ASSERT_NULL(reply);
+    TEST_ASSERT_EQUAL(HM_STATE_CONNECTING, ctx.state);
+    hm_protocol_deinit(&ctx);
+}
+
+TEST_CASE("a shake whose payload is a string is rejected", "[noise]")
+{
+    /* A string that holds the offer as text is still not a mapping. */
+    assert_shake_payload_rejected(
+        "{\"msg_type\": \"shake\", \"payload\": "
+        "\"{\\\"max_protocol_version\\\": 3, \\\"noise\\\": {}}\"}");
+}
+
+TEST_CASE("a shake whose payload is a number is rejected", "[noise]")
+{
+    assert_shake_payload_rejected("{\"msg_type\": \"shake\", \"payload\": 3}");
+}
+
+TEST_CASE("a shake whose payload is an array is rejected", "[noise]")
+{
+    /* An array that wraps the offer is not the offer. */
+    assert_shake_payload_rejected(
+        "{\"msg_type\": \"shake\", \"payload\": [{\"max_protocol_version\": 3, "
+        "\"noise\": {\"patterns\": [\"XXpsk2\"], "
+        "\"suites\": [\"25519_ChaChaPoly_SHA256\"]}}]}");
+}
+
+TEST_CASE("a hello whose payload is an empty object passes the shape check", "[noise]")
+{
+    /* Positive control for the guard: "MAY be empty" is an empty mapping.
+     * A hello with {} passes the shape check, reaches handle_hello, and moves
+     * the state on, with every control field left unset. */
+    hm_protocol_ctx_t ctx;
+    char *reply = NULL;
+    hm_protocol_init(&ctx, "password", "site", HM_CIPHER_CHACHA20_POLY1305);
+    hm_protocol_set_v3(&ctx, fx_psk, fx_s_initiator_priv, NULL);
+    TEST_ASSERT_EQUAL(ESP_OK, hm_protocol_handle_message(&ctx,
+        "{\"msg_type\": \"hello\", \"payload\": {}}", &reply));
+    TEST_ASSERT_NULL(reply);
+    TEST_ASSERT_EQUAL(HM_STATE_HELLO_RECEIVED, ctx.state);
+    TEST_ASSERT_EQUAL_STRING("", ctx.server_peer);
+    hm_protocol_deinit(&ctx);
+}

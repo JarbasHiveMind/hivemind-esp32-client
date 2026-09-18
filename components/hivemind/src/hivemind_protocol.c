@@ -1108,6 +1108,16 @@ esp_err_t hm_protocol_handle_message(hm_protocol_ctx_t *ctx,
         cJSON_Delete(root);
         return ESP_ERR_INVALID_RESPONSE;
     }
+    /* HIVEMIND-MSG-1 §4: a HELLO or HANDSHAKE payload "carries only the
+     * control fields those types require, and MAY be empty". Empty is an
+     * empty mapping. A null, string, number or array is present and still
+     * not a mapping: the handlers would read no control fields from it and
+     * canonicalize the wrong bytes into the prologue. Reject it here. */
+    if (!cJSON_IsObject(payload)) {
+        ESP_LOGE(TAG, "Payload in %s envelope is not a JSON object", type_str);
+        cJSON_Delete(root);
+        return ESP_ERR_INVALID_RESPONSE;
+    }
 
     switch (ctx->state) {
     case HM_STATE_CONNECTING:
